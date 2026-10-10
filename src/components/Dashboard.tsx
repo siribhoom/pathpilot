@@ -28,18 +28,26 @@
 
 import React, { useState, useEffect } from 'react';
 import {
+  Award,
+  BookOpen,
   Briefcase,
   CalendarClock,
   CheckCircle2,
+  CheckSquare,
   Cloud,
   Code2,
   Compass,
   Edit3,
+  ExternalLink,
   FolderGit2,
   HardDrive,
+  Info,
+  Layers,
   Lock,
   PlusCircle,
   RefreshCw,
+  Sparkles,
+  Target,
   UserCheck,
   Users,
 } from 'lucide-react';
@@ -56,6 +64,7 @@ import {
 } from '../types/student';
 import {
   calculateSemesterProgress,
+  generatePersonalizedSemesterRecord,
   getAcademicYearForSemester,
   rearrangeMissedTimetable,
   semesterNameToId,
@@ -135,6 +144,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Status feedback banner
   const [statusBanner, setStatusBanner] = useState<string | null>(null);
 
+  // Skill filter state: all, known (baseline), recommended, in-progress, mastered
+  const [skillFilter, setSkillFilter] = useState<'all' | 'known' | 'recommended' | 'in-progress' | 'mastered'>('all');
+  // Opportunity filter state
+  const [oppFilter, setOppFilter] = useState<'all' | 'Internship' | 'Hackathon' | 'Research / Open-Source'>('all');
+
   const triggerBanner = (msg: string) => {
     setStatusBanner(msg);
     window.setTimeout(() => {
@@ -147,13 +161,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
     (a, b) => a.semesterName.localeCompare(b.semesterName)
   );
 
-  // The currently viewed semester record
-  const currentRecord: SemesterRecord | undefined =
+  // Fallback personalized record generated from the student's profile if storage has none yet
+  const fallbackRecord: SemesterRecord = React.useMemo(() => {
+    return generatePersonalizedSemesterRecord(profile, profile.currentSemester);
+  }, [profile]);
+
+  // The active semester record to display (guaranteed to never be undefined)
+  const activeRecord: SemesterRecord =
     semesterRecords[viewedSemesterId] ||
     semesterRecords[semesterNameToId(profile.currentSemester)] ||
-    sortedSemesters[0];
+    sortedSemesters[0] ||
+    fallbackRecord;
 
-  const isViewingCompletedSemester = currentRecord?.status === 'completed';
+  // Single authoritative reference so all sections and subviews bind consistently
+  const currentRecord: SemesterRecord = activeRecord;
+
+  // Auto-persist activeRecord if it is not yet in storage
+  useEffect(() => {
+    if (!semesterRecords[activeRecord.semesterId]) {
+      onUpdateSemesterRecord(activeRecord).catch((err) => {
+        console.warn('Auto-saving initial semester record:', err);
+      });
+    }
+  }, [activeRecord, semesterRecords, onUpdateSemesterRecord]);
+
+  const isViewingCompletedSemester = activeRecord.status === 'completed';
 
   const displayBranch =
     profile.branch === 'Other' && profile.customBranchName
@@ -186,12 +218,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
    */
 
   const handleToggleWeeklyTask = async (weekId: string) => {
-    if (!currentRecord || isViewingCompletedSemester) return;
-    const updatedWeeks = currentRecord.weeklyPlans.map((w) =>
+    if (isViewingCompletedSemester) return;
+    const updatedWeeks = activeRecord.weeklyPlans.map((w) =>
       w.id === weekId ? { ...w, isCompleted: !w.isCompleted } : w
     );
     const updated: SemesterRecord = {
-      ...currentRecord,
+      ...activeRecord,
       weeklyPlans: updatedWeeks,
     };
     updated.progressPercent = calculateSemesterProgress(updated);
@@ -199,25 +231,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleToggleMonthlyMilestone = async (monthId: string) => {
-    if (!currentRecord || isViewingCompletedSemester) return;
-    const updatedMonths = currentRecord.monthlyPlans.map((m) =>
+    if (isViewingCompletedSemester) return;
+    const updatedMonths = activeRecord.monthlyPlans.map((m) =>
       m.id === monthId ? { ...m, isCompleted: !m.isCompleted } : m
     );
     const updated: SemesterRecord = {
-      ...currentRecord,
+      ...activeRecord,
       monthlyPlans: updatedMonths,
     };
     updated.progressPercent = calculateSemesterProgress(updated);
     await onUpdateSemesterRecord(updated);
   };
 
+  const handleToggleThreeMonthMilestone = async () => {
+    if (isViewingCompletedSemester || !activeRecord.threeMonthMilestone) return;
+    const updated: SemesterRecord = {
+      ...activeRecord,
+      threeMonthMilestone: {
+        ...activeRecord.threeMonthMilestone,
+        isCompleted: !activeRecord.threeMonthMilestone.isCompleted,
+      },
+    };
+    await onUpdateSemesterRecord(updated);
+  };
+
   const handleToggleSubjectBridgeExplored = async (bridgeId: string) => {
-    if (!currentRecord || isViewingCompletedSemester) return;
-    const updatedBridges = currentRecord.subjectBridges.map((b) =>
+    if (isViewingCompletedSemester) return;
+    const updatedBridges = activeRecord.subjectBridges.map((b) =>
       b.id === bridgeId ? { ...b, isExplored: !b.isExplored } : b
     );
     const updated: SemesterRecord = {
-      ...currentRecord,
+      ...activeRecord,
       subjectBridges: updatedBridges,
     };
     await onUpdateSemesterRecord(updated);
@@ -227,12 +271,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     skillId: string,
     newStatus: SkillResourceItem['status']
   ) => {
-    if (!currentRecord || isViewingCompletedSemester) return;
-    const updatedSkills = currentRecord.skills.map((s) =>
+    if (isViewingCompletedSemester) return;
+    const updatedSkills = activeRecord.skills.map((s) =>
       s.id === skillId ? { ...s, status: newStatus } : s
     );
     const updated: SemesterRecord = {
-      ...currentRecord,
+      ...activeRecord,
       skills: updatedSkills,
     };
     updated.progressPercent = calculateSemesterProgress(updated);
@@ -240,8 +284,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleToggleProjectMilestone = async (projectId: string, milestoneId: string) => {
-    if (!currentRecord || isViewingCompletedSemester) return;
-    const updatedProjects = currentRecord.projects.map((proj) => {
+    if (isViewingCompletedSemester) return;
+    const updatedProjects = activeRecord.projects.map((proj) => {
       if (proj.id !== projectId) return proj;
       const nextMilestones = proj.milestones.map((m) =>
         m.id === milestoneId ? { ...m, completed: !m.completed } : m
@@ -267,7 +311,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
 
     const updated: SemesterRecord = {
-      ...currentRecord,
+      ...activeRecord,
       projects: updatedProjects,
     };
     updated.progressPercent = calculateSemesterProgress(updated);
@@ -278,24 +322,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
     oppId: string,
     newStatus: OpportunityItem['status']
   ) => {
-    if (!currentRecord || isViewingCompletedSemester) return;
-    const updatedOpps = currentRecord.opportunities.map((o) =>
+    if (isViewingCompletedSemester) return;
+    const updatedOpps = activeRecord.opportunities.map((o) =>
       o.id === oppId ? { ...o, status: newStatus } : o
     );
     const updated: SemesterRecord = {
-      ...currentRecord,
+      ...activeRecord,
       opportunities: updatedOpps,
     };
     await onUpdateSemesterRecord(updated);
   };
 
   const handleTogglePlacementTask = async (taskId: string) => {
-    if (!currentRecord || isViewingCompletedSemester) return;
-    const updatedTasks = currentRecord.placementTasks.map((t) =>
+    if (isViewingCompletedSemester) return;
+    const updatedTasks = activeRecord.placementTasks.map((t) =>
       t.id === taskId ? { ...t, completed: !t.completed } : t
     );
     const updated: SemesterRecord = {
-      ...currentRecord,
+      ...activeRecord,
       placementTasks: updatedTasks,
     };
     updated.progressPercent = calculateSemesterProgress(updated);
@@ -303,8 +347,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleRearrangeMissedWeek = async (weekNumber: number) => {
-    if (!currentRecord || isViewingCompletedSemester) return;
-    const rearranged = rearrangeMissedTimetable(currentRecord, weekNumber);
+    if (isViewingCompletedSemester) return;
+    const rearranged = rearrangeMissedTimetable(activeRecord, weekNumber);
     await onUpdateSemesterRecord(rearranged);
     triggerBanner(
       `Week ${weekNumber} tasks have been redistributed across upcoming weeks and saved.`
@@ -312,16 +356,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
   const handleConfirmMarkSemesterComplete = async () => {
-    if (!currentRecord) return;
     const completedRecord: SemesterRecord = {
-      ...currentRecord,
+      ...activeRecord,
       status: 'completed',
       updatedAt: new Date().toISOString(),
     };
     await onUpdateSemesterRecord(completedRecord);
     setShowCompleteSemesterModal(false);
     triggerBanner(
-      `${currentRecord.semesterName} has been marked complete and archived in My Profile.`
+      `${activeRecord.semesterName} has been marked complete and archived in My Profile.`
     );
   };
 
@@ -446,7 +489,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   key={section.id}
                   type="button"
                   onClick={() => {
-                    onSetEditingProfile(false);
+                    if (section.id === 'my-profile') {
+                      onSetEditingProfile(true);
+                    } else {
+                      onSetEditingProfile(false);
+                    }
                     onSelectSection(section.id);
                   }}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium rounded-xl transition-colors cursor-pointer text-left ${
@@ -545,9 +592,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 )}
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-                {profile.fullName}
-              </h1>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                  {profile.fullName}
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectSection('my-profile');
+                    onSetEditingProfile(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Profile</span>
+                </button>
+              </div>
 
               <p className="text-sm text-slate-600">
                 BTech <strong className="font-semibold text-slate-900">{displayBranch}</strong> ·{' '}
@@ -628,7 +688,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 onSaveProfile={async (updatedProfile) => {
                   await onSaveProfileEdits(updatedProfile);
                   onSetEditingProfile(false);
-                  triggerBanner('Your profile changes have been saved.');
+                  triggerBanner(
+                    'Your profile changes have been saved. Existing semester roadmaps are safely preserved. If your new profile requires updated recommendations, select "Revise My Roadmap" in My Roadmap.'
+                  );
                 }}
                 onCancel={() => onSetEditingProfile(false)}
               />
@@ -961,22 +1023,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* ===================================================================
             SECTION 2: MY ROADMAP (`my-roadmap`)
-            Displays the saved Subject-to-Real-World Bridges, Monthly Learning
-            Plans, and Weekly Learning Plans for the currently viewed semester.
+            Displays the saved Roadmap Overview, Three-Month Plan, Subject-to-
+            Real-World Bridges, Monthly Learning Plans, and Weekly Learning Plans.
             =================================================================== */}
         {activeSection === 'my-roadmap' && currentRecord && (
           <div className="space-y-8">
-            {/* Section Header + Explicit Regenerate Roadmap Button */}
+            {/* Section Header + Explicit Revise Roadmap Button */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold text-blue-700">
                   02. My Roadmap · {currentRecord.semesterName} ({currentRecord.academicYear})
                 </p>
                 <h2 className="text-xl font-bold text-slate-900 mt-0.5">
-                  Saved Semester Roadmap & Subject Bridges
+                  Saved Semester Roadmap & Practical Engineering Bridges
                 </h2>
                 <p className="text-xs text-slate-500 mt-1">
-                  Loaded from persistent storage. Refreshing the page preserves your exact roadmap and completed tasks.
+                  Tailored to your BTech branch, current subjects, study hours, and career goal. Refreshing preserves your exact roadmap.
                 </p>
               </div>
 
@@ -987,12 +1049,129 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded-xl hover:bg-slate-200 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Regenerate Roadmap</span>
+                  <span>Revise My Roadmap</span>
                 </button>
               )}
             </div>
 
-            {/* Part A: Subject-to-Real-World Applications */}
+            {/* 1. Roadmap Overview & Career Progression Pathway */}
+            <div className="bg-gradient-to-br from-blue-900 via-slate-900 to-indigo-950 text-white rounded-2xl p-6 sm:p-8 space-y-6 shadow-md">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/10 pb-5">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2.5 py-1 text-[11px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-400/30 rounded-lg">
+                      {currentRecord.roadmapOverview?.currentLevel || `${currentRecord.academicYear} · ${currentRecord.semesterName}`}
+                    </span>
+                    <span className="text-xs text-slate-300">Target Career Goal:</span>
+                    <span className="text-xs font-bold text-amber-300">{currentRecord.careerGoal}</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-white mt-1">
+                    Engineering Roadmap: Classroom to {currentRecord.careerGoal}
+                  </h3>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 shrink-0">
+                  <div className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-xs text-slate-200">
+                    <span className="text-slate-400">Budget: </span>
+                    <strong className="text-white font-mono">{currentRecord.weeklyStudyHours} hrs/wk</strong>
+                  </div>
+                  <div className="px-3 py-1.5 rounded-xl bg-white/10 border border-white/15 text-xs text-slate-200">
+                    <span className="text-slate-400">Method: </span>
+                    <strong className="text-white truncate max-w-[170px] inline-block align-bottom">{currentRecord.preferredLearningMethod}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4-Stage Learning Sequence */}
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-blue-300 mb-3">
+                  Suggested Learning Sequence for {currentRecord.semesterName}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  {currentRecord.roadmapOverview?.learningSequence?.map((seq, sIdx) => (
+                    <div key={sIdx} className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                      <span className="font-mono text-[11px] text-blue-400 font-bold">STAGE 0{sIdx + 1}</span>
+                      <p className="text-slate-200 font-medium leading-relaxed">{seq.replace(/^[0-9]\.\s*/, '')}</p>
+                    </div>
+                  )) || (
+                    <>
+                      <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                        <span className="font-mono text-[11px] text-blue-400 font-bold">STAGE 01</span>
+                        <p className="text-slate-200 font-medium">Grounding: Map semester subjects to industry tooling</p>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                        <span className="font-mono text-[11px] text-blue-400 font-bold">STAGE 02</span>
+                        <p className="text-slate-200 font-medium">Skill Sprints: Complete hands-on lab exercises ({currentRecord.weeklyStudyHours} hrs/wk)</p>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                        <span className="font-mono text-[11px] text-blue-400 font-bold">STAGE 03</span>
+                        <p className="text-slate-200 font-medium">System Build: Implement Capstone Engineering Project</p>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-white/5 border border-white/10 space-y-1">
+                        <span className="font-mono text-[11px] text-blue-400 font-bold">STAGE 04</span>
+                        <p className="text-slate-200 font-medium">Placement Prep: Mock technical drills & internship pipeline</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Career Readiness Insight */}
+              <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-400/20 text-xs text-slate-200 flex items-start gap-3">
+                <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  <strong>Career Readiness Context: </strong>
+                  {currentRecord.roadmapOverview?.careerReadinessNote ||
+                    `Specifically customized for a ${profile.branch} student targeting ${profile.careerGoal}. Balances your ${profile.preferredLearningMethod} learning style with university exams so you build career depth without burning out.`}
+                </p>
+              </div>
+            </div>
+
+            {/* 2. Three-Month Plan (90-Day Milestone) */}
+            {currentRecord.threeMonthMilestone && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Target className="w-4 h-4 text-blue-700" />
+                      <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                        Three-Month Semester Goal · 90-Day Key Deliverable
+                      </span>
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 mt-1">
+                      {currentRecord.threeMonthMilestone.title}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isViewingCompletedSemester}
+                    onClick={handleToggleThreeMonthMilestone}
+                    className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      currentRecord.threeMonthMilestone.isCompleted
+                        ? 'bg-emerald-700 text-white border-emerald-700'
+                        : 'bg-white text-slate-800 border-slate-300 hover:bg-slate-100'
+                    } disabled:opacity-50`}
+                  >
+                    {currentRecord.threeMonthMilestone.isCompleted ? '✓ Milestone Completed' : 'Mark Milestone Complete'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="font-semibold text-slate-700">Target Core Competencies:</span>
+                    <p className="text-slate-800 font-medium">
+                      {currentRecord.threeMonthMilestone.targetSkills.join(' · ')}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                    <span className="font-semibold text-slate-700">Practical Verifiable Outcome:</span>
+                    <p className="text-slate-800 font-medium">
+                      {currentRecord.threeMonthMilestone.outcome}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Subject-to-Real-World Applications */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-5">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
@@ -1018,22 +1197,48 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <span className="font-mono font-semibold text-blue-700">
                           SUBJECT 0{idx + 1}
                         </span>
-                        <span>{bridge.studyResourceFormat}</span>
+                        <span className="text-slate-500 font-medium">{bridge.studyResourceFormat}</span>
                       </div>
                       <h4 className="text-base font-bold text-slate-900">
                         {bridge.subjectName}
                       </h4>
                       <div className="space-y-2 text-xs">
-                        <div>
-                          <span className="font-semibold text-slate-700">Classroom Theory: </span>
-                          <span className="text-slate-600">{bridge.classroomConcepts}</span>
-                        </div>
-                        <div>
-                          <span className="font-semibold text-slate-700">Real-World System: </span>
-                          <span className="text-slate-800 font-medium">
-                            {bridge.realWorldApplication}
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 space-y-1">
+                          <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                            <BookOpen className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                            Classroom Concepts in College:
                           </span>
+                          <p className="text-slate-600 pl-5">{bridge.classroomConcepts}</p>
                         </div>
+
+                        <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 space-y-1">
+                          <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                            <Briefcase className="w-3.5 h-3.5 text-slate-700 shrink-0" />
+                            Where It Is Used in Industry:
+                          </span>
+                          <p className="text-slate-800 font-medium pl-5">{bridge.realWorldApplication}</p>
+                        </div>
+
+                        {bridge.practicalSkillOrTool && (
+                          <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 space-y-1">
+                            <span className="font-semibold text-emerald-800 flex items-center gap-1.5">
+                              <Code2 className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                              Practical Tool / Skill to Learn:
+                            </span>
+                            <p className="text-slate-800 font-medium pl-5">{bridge.practicalSkillOrTool}</p>
+                          </div>
+                        )}
+
+                        {bridge.practicalExercise && (
+                          <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 space-y-1">
+                            <span className="font-semibold text-indigo-800 flex items-center gap-1.5">
+                              <Target className="w-3.5 h-3.5 text-indigo-700 shrink-0" />
+                              Hands-on Exercise / Mini-Project:
+                            </span>
+                            <p className="text-slate-700 pl-5">{bridge.practicalExercise}</p>
+                          </div>
+                        )}
+
                         <div>
                           <span className="font-semibold text-blue-800">Career Skill Unlocked: </span>
                           <span className="text-blue-900 font-medium">
@@ -1203,80 +1408,171 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* ===================================================================
             SECTION 3: MY SKILLS (`my-skills`)
-            Displays saved skills & learning resources for the viewed semester.
+            Displays saved skills & learning resources for the viewed semester,
+            including student's known skills, recommended skills, resources, and
+            practice tasks.
             =================================================================== */}
-        {activeSection === 'my-skills' && currentRecord && (
-          <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 mb-6 border-b border-slate-100">
-                <div>
-                  <p className="text-xs font-semibold text-blue-700">
-                    03. My Skills · {currentRecord.semesterName}
-                  </p>
-                  <h2 className="text-xl font-bold text-slate-900 mt-0.5">
-                    Saved Skills & Learning Resources
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Update your proficiency status as you progress from Planned to In Progress and Mastered.
-                  </p>
-                </div>
-                <div className="text-xs font-mono tabular-nums text-slate-600">
-                  {currentRecord.skills.filter((s) => s.status === 'mastered').length} /{' '}
-                  {currentRecord.skills.length} Mastered
-                </div>
-              </div>
+        {activeSection === 'my-skills' && currentRecord && (() => {
+          const knownSkillsCount = currentRecord.skills.filter((s) => s.category === 'Baseline Known').length;
+          const recommendedSkillsCount = currentRecord.skills.filter((s) => s.category !== 'Baseline Known').length;
+          const inProgressSkillsCount = currentRecord.skills.filter((s) => s.status === 'in-progress').length;
+          const masteredSkillsCount = currentRecord.skills.filter((s) => s.status === 'mastered').length;
 
-              <div className="space-y-4">
-                {currentRecord.skills.map((skill) => (
-                  <div
-                    key={skill.id}
-                    className="p-5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span className="font-semibold text-blue-700">{skill.category}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>Linked: {skill.linkedSubject}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-mono tabular-nums">~{skill.estimatedHours} hrs</span>
-                      </div>
-                      <h3 className="text-sm sm:text-base font-bold text-slate-900">
-                        {skill.skillName}
-                      </h3>
-                      <p className="text-xs text-slate-600">
-                        Recommended Resource: <strong>{skill.resourceTitle}</strong>
-                      </p>
-                    </div>
+          const filteredSkills = currentRecord.skills.filter((s) => {
+            if (skillFilter === 'known') return s.category === 'Baseline Known';
+            if (skillFilter === 'recommended') return s.category !== 'Baseline Known';
+            if (skillFilter === 'in-progress') return s.status === 'in-progress';
+            if (skillFilter === 'mastered') return s.status === 'mastered';
+            return true;
+          });
 
-                    {/* Interactive Status Segmented Control */}
-                    <div className="flex items-center gap-1.5 p-1 bg-white border border-slate-200 rounded-xl shrink-0">
-                      {(['planned', 'in-progress', 'mastered'] as const).map((statusOption) => {
-                        const active = skill.status === statusOption;
-                        return (
-                          <button
-                            key={statusOption}
-                            type="button"
-                            disabled={isViewingCompletedSemester}
-                            onClick={() => handleChangeSkillStatus(skill.id, statusOption)}
-                            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer capitalize whitespace-nowrap ${
-                              active
-                                ? statusOption === 'mastered'
-                                  ? 'bg-emerald-700 text-white'
-                                  : 'bg-blue-700 text-white'
-                                : 'text-slate-600 hover:text-slate-900'
-                            } disabled:opacity-50`}
-                          >
-                            {statusOption.replace('-', ' ')}
-                          </button>
-                        );
-                      })}
-                    </div>
+          return (
+            <div className="space-y-6">
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                  <div>
+                    <p className="text-xs font-semibold text-blue-700">
+                      03. My Skills · {currentRecord.semesterName}
+                    </p>
+                    <h2 className="text-xl font-bold text-slate-900 mt-0.5">
+                      Skills Roadmap & Verified Learning Resources
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Update your proficiency status yourself. Skills in the roadmap start as Planned or In Progress and are only marked Mastered when you confirm them.
+                    </p>
                   </div>
-                ))}
+                  <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-600 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
+                    <span className="font-bold text-emerald-700">{masteredSkillsCount}</span> /{' '}
+                    <span>{currentRecord.skills.length} Mastered</span>
+                  </div>
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {(
+                    [
+                      { id: 'all', label: `All Skills (${currentRecord.skills.length})` },
+                      { id: 'known', label: `Known Foundation (${knownSkillsCount})` },
+                      { id: 'recommended', label: `Recommended by Roadmap (${recommendedSkillsCount})` },
+                      { id: 'in-progress', label: `In Progress (${inProgressSkillsCount})` },
+                      { id: 'mastered', label: `Mastered (${masteredSkillsCount})` },
+                    ] as const
+                  ).map((tab) => {
+                    const isSelected = skillFilter === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setSkillFilter(tab.id)}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-700 text-white border-blue-700'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Skills Cards Grid */}
+                <div className="space-y-4">
+                  {filteredSkills.map((skill) => (
+                    <div
+                      key={skill.id}
+                      className="p-5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-5"
+                    >
+                      <div className="space-y-2.5 max-w-2xl">
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span
+                            className={`px-2 py-0.5 rounded-md font-semibold text-[11px] ${
+                              skill.category === 'Baseline Known'
+                                ? 'bg-slate-200 text-slate-800'
+                                : skill.category === 'Subject-Linked Core'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-purple-100 text-purple-800'
+                            }`}
+                          >
+                            {skill.category}
+                          </span>
+
+                          {skill.level && (
+                            <span className="px-2 py-0.5 rounded-md font-mono text-[11px] bg-white border border-slate-300 text-slate-700">
+                              {skill.level}
+                            </span>
+                          )}
+
+                          <span className="text-slate-500">· Linked: {skill.linkedSubject}</span>
+                          <span className="text-slate-500">· ~{skill.estimatedHours} hrs</span>
+                        </div>
+
+                        <h3 className="text-base font-bold text-slate-900">
+                          {skill.skillName}
+                        </h3>
+
+                        {/* Learning Resource with Legitimate Link */}
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                          <BookOpen className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                          <span>Resource: <strong>{skill.resourceTitle}</strong></span>
+                          {skill.resourceLink && (
+                            <a
+                              href={skill.resourceLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
+                            >
+                              <span>Official Docs</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Practical Practice Task */}
+                        {skill.practiceTask && (
+                          <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-0.5">
+                            <span className="font-semibold text-slate-700">Practice Task: </span>
+                            <span className="text-slate-600">{skill.practiceTask}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Interactive Status Segmented Control */}
+                      <div className="flex items-center gap-1.5 p-1 bg-white border border-slate-200 rounded-xl shrink-0 self-start md:self-center">
+                        {(['planned', 'in-progress', 'mastered'] as const).map((statusOption) => {
+                          const active = skill.status === statusOption;
+                          return (
+                            <button
+                              key={statusOption}
+                              type="button"
+                              disabled={isViewingCompletedSemester}
+                              onClick={() => handleChangeSkillStatus(skill.id, statusOption)}
+                              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer capitalize whitespace-nowrap ${
+                                active
+                                  ? statusOption === 'mastered'
+                                    ? 'bg-emerald-700 text-white'
+                                    : 'bg-blue-700 text-white'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              } disabled:opacity-50`}
+                            >
+                              {statusOption.replace('-', ' ')}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {filteredSkills.length === 0 && (
+                    <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                      No skills match the selected filter. Try switching to "All Skills".
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ===================================================================
             SECTION 4: MY PROJECTS (`my-projects`)
@@ -1304,7 +1600,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className="p-6 rounded-xl bg-slate-50 border border-slate-200 space-y-5"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
+                      <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                           <span className="font-mono font-semibold text-blue-700">
                             PROJECT 0{idx + 1}
@@ -1316,9 +1612,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             ~{project.estimatedHours} hrs total
                           </span>
                         </div>
-                        <h3 className="text-lg font-bold text-slate-900 mt-1">
-                          {project.title}
-                        </h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-lg font-bold text-slate-900">
+                            {project.title}
+                          </h3>
+                          {project.difficulty && (
+                            <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                              {project.difficulty}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <div className="text-right shrink-0">
@@ -1332,6 +1635,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
 
                     <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                      <strong>Problem Statement: </strong>
                       {project.problemStatement}
                     </p>
 
@@ -1339,6 +1643,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       <strong>Real-World Context:</strong> {project.realWorldContext} ·{' '}
                       <strong>Target Competency:</strong> {project.targetSkill}
                     </div>
+
+                    {project.expectedOutcome && (
+                      <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-200 text-xs space-y-0.5">
+                        <span className="font-semibold text-blue-900 flex items-center gap-1.5">
+                          <Award className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                          Expected Outcome & Portfolio Deliverable:
+                        </span>
+                        <p className="text-slate-700 pl-5">{project.expectedOutcome}</p>
+                      </div>
+                    )}
+
+                    {project.suggestedTools && project.suggestedTools.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="text-slate-500 font-semibold mr-1">Suggested Tools:</span>
+                        {project.suggestedTools.map((tool, tIdx) => (
+                          <span
+                            key={tIdx}
+                            className="px-2 py-0.5 rounded-md bg-white border border-slate-300 text-slate-800 text-[11px] font-mono"
+                          >
+                            {tool}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Progress Bar */}
                     <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -1396,68 +1724,130 @@ export const Dashboard: React.FC<DashboardProps> = ({
             SECTION 5: MY OPPORTUNITIES (`my-opportunities`)
             Displays saved Internships, Hackathons, and Placement Prep Tasks.
             =================================================================== */}
-        {activeSection === 'my-opportunities' && currentRecord && (
-          <div className="space-y-8">
-            {/* Internships & Hackathons */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
-              <div className="border-b border-slate-100 pb-5">
-                <p className="text-xs font-semibold text-blue-700">
-                  05. My Opportunities · {currentRecord.semesterName} ({currentRecord.academicYear})
-                </p>
-                <h2 className="text-xl font-bold text-slate-900 mt-0.5">
-                  Internships, Hackathons & Technical Fellowships
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">
-                  Track your application pipeline for {currentRecord.academicYear} opportunities.
-                </p>
-              </div>
+        {activeSection === 'my-opportunities' && currentRecord && (() => {
+          const internshipCount = currentRecord.opportunities.filter((o) => o.type === 'Internship').length;
+          const hackathonCount = currentRecord.opportunities.filter((o) => o.type === 'Hackathon').length;
+          const researchCount = currentRecord.opportunities.filter((o) => o.type === 'Research / Open-Source').length;
 
-              <div className="space-y-4">
-                {currentRecord.opportunities.map((opp) => (
-                  <div
-                    key={opp.id}
-                    className="p-5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1.5 max-w-2xl">
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span className="font-semibold text-blue-700">{opp.type}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{opp.eligibilityYear}</span>
-                        <span aria-hidden="true">·</span>
-                        <span>{opp.timelineWindow}</span>
+          const filteredOpps = currentRecord.opportunities.filter((opp) => {
+            if (oppFilter === 'all') return true;
+            return opp.type === oppFilter;
+          });
+
+          return (
+            <div className="space-y-8">
+              {/* Internships & Hackathons */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
+                <div className="border-b border-slate-100 pb-5">
+                  <p className="text-xs font-semibold text-blue-700">
+                    05. My Opportunities · {currentRecord.semesterName} ({currentRecord.academicYear})
+                  </p>
+                  <h2 className="text-xl font-bold text-slate-900 mt-0.5">
+                    Internships, Hackathons & Technical Fellowships
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Track your application pipeline for {currentRecord.academicYear} opportunities matched to your {profile.branch} branch and career goal.
+                  </p>
+                </div>
+
+                {/* Filter Tabs */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {(
+                    [
+                      { id: 'all', label: `All Opportunities (${currentRecord.opportunities.length})` },
+                      { id: 'Internship', label: `Internships (${internshipCount})` },
+                      { id: 'Hackathon', label: `Hackathons (${hackathonCount})` },
+                      { id: 'Research / Open-Source', label: `Research / Open-Source (${researchCount})` },
+                    ] as const
+                  ).map((tab) => {
+                    const isSelected = oppFilter === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setOppFilter(tab.id)}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                          isSelected
+                            ? 'bg-blue-700 text-white border-blue-700'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-4">
+                  {filteredOpps.map((opp) => (
+                    <div
+                      key={opp.id}
+                      className="p-5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4"
+                    >
+                      <div className="space-y-2 max-w-2xl">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                          <span className="font-semibold text-blue-700 px-2 py-0.5 bg-blue-50 border border-blue-200 rounded-md">
+                            {opp.type}
+                          </span>
+                          <span aria-hidden="true">·</span>
+                          <span>{opp.eligibilityYear}</span>
+                          <span aria-hidden="true">·</span>
+                          <span className="font-medium text-slate-700">{opp.timelineWindow}</span>
+                        </div>
+                        <h3 className="text-base font-bold text-slate-900">{opp.title}</h3>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          {opp.whyRelevant}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="text-slate-500 font-semibold">Key Skills:</span>
+                          {opp.requiredSkills.map((sk, sIdx) => (
+                            <span key={sIdx} className="px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700 font-medium text-[11px]">
+                              {sk}
+                            </span>
+                          ))}
+                          {opp.sourceLink && (
+                            <a
+                              href={opp.sourceLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline ml-2"
+                            >
+                              <span>Official Portal</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      <h3 className="text-base font-bold text-slate-900">{opp.title}</h3>
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        {opp.whyRelevant}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Key Skills: {opp.requiredSkills.join(' · ')}
-                      </p>
-                    </div>
 
-                    <div className="flex items-center gap-1.5 p-1 bg-white border border-slate-200 rounded-xl shrink-0">
-                      {(['suggested', 'saved', 'applied', 'completed'] as const).map(
-                        (st) => (
-                          <button
-                            key={st}
-                            type="button"
-                            disabled={isViewingCompletedSemester}
-                            onClick={() => handleChangeOpportunityStatus(opp.id, st)}
-                            className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer capitalize whitespace-nowrap ${
-                              opp.status === st
-                                ? 'bg-blue-700 text-white'
-                                : 'text-slate-600 hover:text-slate-900'
-                            } disabled:opacity-50`}
-                          >
-                            {st}
-                          </button>
-                        )
-                      )}
+                      <div className="flex items-center gap-1.5 p-1 bg-white border border-slate-200 rounded-xl shrink-0 self-start lg:self-center">
+                        {(['suggested', 'saved', 'applied', 'completed'] as const).map(
+                          (st) => (
+                            <button
+                              key={st}
+                              type="button"
+                              disabled={isViewingCompletedSemester}
+                              onClick={() => handleChangeOpportunityStatus(opp.id, st)}
+                              className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer capitalize whitespace-nowrap ${
+                                opp.status === st
+                                  ? 'bg-blue-700 text-white'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              } disabled:opacity-50`}
+                            >
+                              {st}
+                            </button>
+                          )
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+
+                  {filteredOpps.length === 0 && (
+                    <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                      No opportunities found under this filter. Try selecting "All Opportunities".
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
             {/* Placement Preparation Tasks */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-5">
@@ -1517,7 +1907,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
           </div>
-        )}
+        );
+      })()}
 
         {/* ===================================================================
             SECTION 6: MY PROGRESS (`my-progress`)
@@ -1541,6 +1932,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </span>
                   <p className="text-xs text-slate-500">Overall Semester Progress</p>
                 </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-blue-700 transition-all duration-500"
+                  style={{ width: `${currentRecord.progressPercent}%` }}
+                />
               </div>
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1570,6 +1969,53 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <p className="text-xl font-bold font-mono tabular-nums text-slate-900 mt-1">
                     {currentRecord.placementTasks.filter((t) => t.completed).length} /{' '}
                     {currentRecord.placementTasks.length}
+                  </p>
+                </div>
+              </div>
+
+              {/* Three-Month Milestone Tracker & Weekly Study Budget */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {currentRecord.threeMonthMilestone && (
+                  <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Target className="w-3.5 h-3.5" />
+                        Three-Month Target Milestone
+                      </span>
+                      <span
+                        className={`font-semibold ${
+                          currentRecord.threeMonthMilestone.isCompleted
+                            ? 'text-emerald-700'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {currentRecord.threeMonthMilestone.isCompleted ? '✓ Completed' : 'In Progress'}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-900">
+                      {currentRecord.threeMonthMilestone.title}
+                    </h4>
+                    <p className="text-xs text-slate-600">
+                      Outcome: {currentRecord.threeMonthMilestone.outcome}
+                    </p>
+                  </div>
+                )}
+
+                <div className="p-5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <CalendarClock className="w-3.5 h-3.5" />
+                      Weekly Study Hours Budget
+                    </span>
+                    <span className="font-mono font-semibold text-slate-700">
+                      {currentRecord.weeklyStudyHours} hrs/week
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-900">
+                    Calibrated for {currentRecord.preferredLearningMethod}
+                  </h4>
+                  <p className="text-xs text-slate-600">
+                    Calculated to build depth in {currentRecord.careerGoal} alongside university exams without burnout.
                   </p>
                 </div>
               </div>
@@ -1641,18 +2087,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       )}
 
       {/* =====================================================================
-          MODAL 2: CONFIRM REGENERATING ROADMAP
+          MODAL 2: CONFIRM REVISING ROADMAP
           ===================================================================== */}
       {showRegenerateModal && currentRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
           <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
             <h2 className="text-base font-bold text-slate-900">
-              Regenerate {currentRecord.semesterName} Roadmap?
+              Revise {currentRecord.semesterName} Roadmap?
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               PathPilot never overwrites a saved roadmap automatically. Confirming below will
-              generate a fresh roadmap for <strong>{currentRecord.semesterName}</strong> using your
-              latest profile settings and reset task completion inside this semester only.
+              generate an updated roadmap for <strong>{currentRecord.semesterName}</strong> tailored to your
+              latest profile settings and subjects while keeping all other semester records safe.
             </p>
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
@@ -1671,12 +2117,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     profile.currentSubjects
                   );
                   triggerBanner(
-                    `Regenerated ${currentRecord.semesterName} roadmap with your latest profile settings.`
+                    `Updated ${currentRecord.semesterName} roadmap recommendations with your latest profile settings.`
                   );
                 }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-blue-700 rounded-xl hover:bg-blue-800 cursor-pointer"
               >
-                Confirm Regenerate
+                Confirm & Revise Roadmap
               </button>
             </div>
           </div>

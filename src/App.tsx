@@ -394,14 +394,10 @@ export default function App() {
    * ==========================================================================
    */
   const handleSignInGoogle = async () => {
-    setStorageError(null);
     try {
       await signInWithGoogle();
     } catch (err) {
       console.warn('Google Sign-In popup closed or blocked:', err);
-      setStorageError(
-        'Google Sign-In was cancelled or blocked by your browser popup settings. Your data remains safely stored in Local Browser Mode.'
-      );
     }
   };
 
@@ -438,7 +434,8 @@ export default function App() {
         onStartOnboarding={handleStartFreshOnboarding}
         onOpenDashboard={() => {
           if (studentProfile) {
-            setIsEditingProfile(false);
+            setActiveDashboardSection('my-profile');
+            setIsEditingProfile(true);
             setCurrentView('dashboard');
           } else {
             handleStartFreshOnboarding();
@@ -446,7 +443,6 @@ export default function App() {
         }}
         onEditProfile={handleOpenEditProfile}
         onGoHome={() => setCurrentView('landing')}
-        onSignInGoogle={handleSignInGoogle}
         onSignOut={handleSignOut}
       />
 

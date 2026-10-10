@@ -89,6 +89,8 @@ export interface SubjectBridgeItem {
   industrySkillUnlocked: string;
   studyResourceFormat: string;
   isExplored: boolean;
+  practicalSkillOrTool?: string;
+  practicalExercise?: string;
 }
 
 /**
@@ -130,6 +132,9 @@ export interface SkillResourceItem {
   resourceType: string;
   estimatedHours: number;
   status: 'planned' | 'in-progress' | 'mastered';
+  level?: 'Beginner' | 'Intermediate' | 'Advanced';
+  resourceLink?: string;
+  practiceTask?: string;
 }
 
 /**
@@ -145,6 +150,9 @@ export interface ProjectItem {
   estimatedHours: number;
   status: 'not-started' | 'in-progress' | 'completed';
   progressPercent: number;
+  difficulty?: 'Beginner' | 'Intermediate' | 'Advanced';
+  suggestedTools?: string[];
+  expectedOutcome?: string;
   milestones: {
     id: string;
     label: string;
@@ -164,6 +172,8 @@ export interface OpportunityItem {
   whyRelevant: string;
   requiredSkills: string[];
   status: 'suggested' | 'saved' | 'applied' | 'completed';
+  sourceLink?: string;
+  isCuratedSample?: boolean;
 }
 
 /**
@@ -206,6 +216,18 @@ export interface SemesterRecord {
   projects: ProjectItem[];
   opportunities: OpportunityItem[];
   placementTasks: PlacementTaskItem[];
+  threeMonthMilestone?: {
+    title: string;
+    targetSkills: string[];
+    outcome: string;
+    isCompleted?: boolean;
+  };
+  roadmapOverview?: {
+    currentLevel: string;
+    careerGoal: string;
+    learningSequence: string[];
+    careerReadinessNote: string;
+  };
   createdAt: string;
   updatedAt: string;
 }

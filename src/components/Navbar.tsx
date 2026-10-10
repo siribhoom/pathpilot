@@ -15,9 +15,8 @@ interface NavbarProps {
   userEmail?: string | null;
   onStartOnboarding: () => void;
   onOpenDashboard: () => void;
-  onEditProfile: () => void;
+  onEditProfile?: () => void;
   onGoHome: () => void;
-  onSignInGoogle: () => void;
   onSignOut: () => void;
 }
 
@@ -27,9 +26,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isCloudAuthenticated,
   onStartOnboarding,
   onOpenDashboard,
-  onEditProfile,
   onGoHome,
-  onSignInGoogle,
   onSignOut,
 }) => {
   return (
@@ -72,21 +69,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 My Dashboard
               </button>
             )}
-            {isCloudAuthenticated ? (
+            {isCloudAuthenticated && (
               <button
                 type="button"
                 onClick={onSignOut}
                 className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
               >
                 Sign Out
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onSignInGoogle}
-                className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-              >
-                Cloud Sign In
               </button>
             )}
           </>
@@ -109,24 +98,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               New Onboarding
             </button>
             {hasSavedProfile && (
-              <>
-                <button
-                  type="button"
-                  onClick={onOpenDashboard}
-                  className={`hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    currentView === 'dashboard' ? 'text-blue-700 font-semibold' : ''
-                  }`}
-                >
-                  My Dashboard
-                </button>
-                <button
-                  type="button"
-                  onClick={onEditProfile}
-                  className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  Edit Profile
-                </button>
-              </>
+              <button
+                type="button"
+                onClick={onOpenDashboard}
+                className={`hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                  currentView === 'dashboard' ? 'text-blue-700 font-semibold' : ''
+                }`}
+              >
+                My Dashboard
+              </button>
+            )}
+            {isCloudAuthenticated && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                Sign Out
+              </button>
             )}
           </>
         )}
@@ -134,15 +123,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
       {/* Zone 3: 1 Primary Action CTA */}
       <div className="flex items-center gap-3 shrink-0">
-        {currentView === 'dashboard' ? (
-          <button
-            type="button"
-            onClick={onEditProfile}
-            className="px-4 py-2 text-xs font-semibold text-slate-900 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            Edit Profile
-          </button>
-        ) : hasSavedProfile && currentView === 'landing' ? (
+        {hasSavedProfile && currentView === 'landing' ? (
           <button
             type="button"
             onClick={onOpenDashboard}
@@ -150,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             Open My Dashboard
           </button>
-        ) : (
+        ) : currentView === 'landing' || currentView === 'onboarding' ? (
           <button
             type="button"
             onClick={onStartOnboarding}
@@ -158,7 +139,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             Build My Roadmap
           </button>
-        )}
+        ) : isCloudAuthenticated ? (
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            Sign Out
+          </button>
+        ) : null}
       </div>
     </header>
   );
