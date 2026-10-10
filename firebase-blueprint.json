@@ -1,0 +1,263 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Persistent BTech student profile and active semester pointer owned by a specific authenticated user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the authenticated student owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Student full name.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "branch": {
+          "type": "string",
+          "description": "Selected BTech branch.",
+          "enum": ["CSE", "IT", "ECE", "EEE", "Mechanical", "Civil", "Other"],
+          "minLength": 2,
+          "maxLength": 30
+        },
+        "customBranchName": {
+          "type": "string",
+          "description": "Custom branch name if branch is Other.",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "currentYear": {
+          "type": "string",
+          "description": "Current BTech academic year.",
+          "enum": ["1st Year", "2nd Year", "3rd Year", "4th Year"],
+          "minLength": 8,
+          "maxLength": 10
+        },
+        "currentSemester": {
+          "type": "string",
+          "description": "Active semester label.",
+          "enum": [
+            "Semester 1",
+            "Semester 2",
+            "Semester 3",
+            "Semester 4",
+            "Semester 5",
+            "Semester 6",
+            "Semester 7",
+            "Semester 8"
+          ],
+          "minLength": 10,
+          "maxLength": 12
+        },
+        "currentSubjects": {
+          "type": "array",
+          "description": "List of current academic subjects (max 15).",
+          "maxLength": 15
+        },
+        "careerGoal": {
+          "type": "string",
+          "description": "Target engineering career role or field.",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "knownSkills": {
+          "type": "array",
+          "description": "List of skills already known by the student (max 30).",
+          "maxLength": 30
+        },
+        "weeklyStudyHours": {
+          "type": "number",
+          "description": "Available weekly study hours between 1 and 60."
+        },
+        "preferredLearningMethod": {
+          "type": "string",
+          "description": "Preferred learning method.",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated."
+        }
+      },
+      "required": [
+        "userId",
+        "fullName",
+        "branch",
+        "customBranchName",
+        "currentYear",
+        "currentSemester",
+        "currentSubjects",
+        "careerGoal",
+        "knownSkills",
+        "weeklyStudyHours",
+        "preferredLearningMethod",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "SemesterRecord": {
+      "title": "SemesterRecord",
+      "description": "Semester-specific persisted roadmap, learning plans, skills, projects, opportunities, and completion progress stored using native Firestore maps and lists.",
+      "type": "object",
+      "properties": {
+        "semesterId": {
+          "type": "string",
+          "description": "Unique semester identifier (e.g. sem_1 to sem_8).",
+          "minLength": 5,
+          "maxLength": 32,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user UID matching parent user document.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "semesterName": {
+          "type": "string",
+          "description": "Human-readable semester title (Semester 1 to Semester 8).",
+          "minLength": 10,
+          "maxLength": 12
+        },
+        "academicYear": {
+          "type": "string",
+          "description": "Academic year corresponding to this semester.",
+          "minLength": 8,
+          "maxLength": 10
+        },
+        "branch": {
+          "type": "string",
+          "description": "Engineering branch for this semester record.",
+          "minLength": 2,
+          "maxLength": 30
+        },
+        "careerGoal": {
+          "type": "string",
+          "description": "Target career goal during this semester.",
+          "minLength": 3,
+          "maxLength": 120
+        },
+        "weeklyStudyHours": {
+          "type": "number",
+          "description": "Weekly study hours allocated for this semester."
+        },
+        "preferredLearningMethod": {
+          "type": "string",
+          "description": "Preferred learning method for this semester.",
+          "minLength": 3,
+          "maxLength": 80
+        },
+        "subjects": {
+          "type": "array",
+          "description": "Academic subjects studied in this semester (max 15).",
+          "maxLength": 15
+        },
+        "status": {
+          "type": "string",
+          "description": "Semester lifecycle status: active or completed.",
+          "enum": ["active", "completed"],
+          "minLength": 6,
+          "maxLength": 12
+        },
+        "progressPercent": {
+          "type": "number",
+          "description": "Overall completion percentage (0 to 100)."
+        },
+        "subjectBridges": {
+          "type": "array",
+          "description": "Native list of subject-to-real-world bridge map objects (max 15).",
+          "maxLength": 15
+        },
+        "monthlyPlans": {
+          "type": "array",
+          "description": "Native list of monthly learning plan map objects (max 6).",
+          "maxLength": 6
+        },
+        "weeklyPlans": {
+          "type": "array",
+          "description": "Native list of weekly learning plan map objects (max 20).",
+          "maxLength": 20
+        },
+        "skills": {
+          "type": "array",
+          "description": "Native list of skill and resource map objects (max 30).",
+          "maxLength": 30
+        },
+        "projects": {
+          "type": "array",
+          "description": "Native list of semester project map objects (max 10).",
+          "maxLength": 10
+        },
+        "opportunities": {
+          "type": "array",
+          "description": "Native list of internship and hackathon map objects (max 15).",
+          "maxLength": 15
+        },
+        "placementTasks": {
+          "type": "array",
+          "description": "Native list of placement preparation task map objects (max 20).",
+          "maxLength": 20
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the semester record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the semester record was last updated."
+        }
+      },
+      "required": [
+        "semesterId",
+        "userId",
+        "semesterName",
+        "academicYear",
+        "branch",
+        "careerGoal",
+        "weeklyStudyHours",
+        "preferredLearningMethod",
+        "subjects",
+        "status",
+        "progressPercent",
+        "subjectBridges",
+        "monthlyPlans",
+        "weeklyPlans",
+        "skills",
+        "projects",
+        "opportunities",
+        "placementTasks",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Stores each student's persistent profile and current active semester pointer."
+    },
+    "/users/{userId}/semesters/{semesterId}": {
+      "schema": {
+        "$ref": "#/entities/SemesterRecord"
+      },
+      "description": "Stores each semester's generated roadmap, tasks, skills, projects, opportunities, and progress for the owning student."
+    }
+  }
+}

@@ -1,31 +1,28 @@
 /**
  * ============================================================================
  * FILE: src/components/OnboardingForm.tsx
- * PURPOSE: Collects and validates the student's academic and career details
- *          before opening the personalized PathPilot Dashboard.
+ * PURPOSE: Collects and validates the student's academic and career details.
  *
- * BEGINNER CONCEPTS DEMONSTRATED IN THIS COMPONENT:
- * 1. Controlled Inputs:
- *    In React, instead of letting the HTML `<input>` hold its own hidden value
- *    in the browser DOM, we store every field inside React state (`formInput`).
- *    When the user types a character, `onChange` fires -> updates `formInput` ->
- *    React re-renders the input with the updated `value`. This guarantees our
- *    JavaScript logic always knows the exact current state of the form.
+ * KEY LOGIC FOR REQUIREMENT 1 & 2 (Form Reset vs. Profile Editing):
+ * 1. Fresh Onboarding Mode (`mode === 'onboarding'`):
+ *    Every time the user clicks "Build My Roadmap", `App.tsx` renders this
+ *    component with `mode="onboarding"` and a unique `resetTriggerKey`.
+ *    Because `initialProfile` is NOT loaded in `'onboarding'` mode, every input,
+ *    dropdown, branch card, and validation error starts 100% empty—without
+ *    deleting any already-saved student profile in storage!
+ *    If the user clicks "Cancel" or navigates away without submitting, their
+ *    previously saved profile and roadmaps remain completely untouched.
  *
- * 2. Real-Time & Submit-Time Form Validation:
- *    We run `validateOnboardingForm(formInput)` whenever the user attempts to
- *    submit OR after they have interacted with a field. If any required field
- *    is missing or invalid, we display a helpful error message right below that
- *    field and block submission until all required fields are valid.
- *
- * 3. Lifting State Up (Passing Data to Parent):
- *    When the form is valid, this component calls `onCompleteOnboarding(profile)`.
- *    That function lives in `App.tsx`, which receives the validated `StudentProfile`
- *    object and switches the active view from `'onboarding'` to `'dashboard'`.
+ * 2. Profile Edit Mode (`mode === 'edit'`):
+ *    When the user clicks "Edit Profile" inside the Dashboard's "My Profile"
+ *    section, this form is rendered with `mode="edit"` and `initialProfile`
+ *    populated with their saved data. Changes are held in temporary React state
+ *    (`formInput`) and only written to persistent storage when the user
+ *    explicitly clicks "Save Changes".
  * ============================================================================
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertCircle, ArrowLeft, Check, Sparkles } from 'lucide-react';
 import {
   AcademicSemester,
@@ -46,29 +43,45 @@ import {
   validateOnboardingForm,
 } from '../utils/validation';
 
+const EMPTY_FORM_STATE: RawOnboardingFormInput = {
+  fullName: '',
+  branch: '',
+  customBranchName: '',
+  currentYear: '',
+  currentSemester: '',
+  subjectsText: '',
+  careerGoal: '',
+  knownSkillsText: '',
+  weeklyStudyHours: '',
+  preferredLearningMethod: '',
+};
+
 interface OnboardingFormProps {
-  /**
-   * If the student is returning from the Dashboard to edit their existing profile,
-   * `initialProfile` contains their previously saved values so they don't have to
-   * retype everything from scratch.
-   */
+  mode: 'onboarding' | 'edit';
+  activeUserId: string;
   initialProfile: StudentProfile | null;
-  onCompleteOnboarding: (profile: StudentProfile) => void;
+  hasExistingSavedData?: boolean;
+  isSaving?: boolean;
+  onSaveProfile: (profile: StudentProfile, replaceRoadmapConfirmed: boolean) => void;
   onCancel: () => void;
 }
 
 export const OnboardingForm: React.FC<OnboardingFormProps> = ({
+  mode,
+  activeUserId,
   initialProfile,
-  onCompleteOnboarding,
+  hasExistingSavedData = false,
+  isSaving = false,
+  onSaveProfile,
   onCancel,
 }) => {
   /**
-   * Initialize form state.
-   * If `initialProfile` exists (edit mode), pre-fill the inputs with their saved data.
-   * Otherwise, start with clean empty strings.
+   * Initialize form state:
+   * - If `mode === 'edit'` AND `initialProfile` is provided, load the saved profile.
+   * - If `mode === 'onboarding'` ("Build My Roadmap"), ALWAYS start with empty fields!
    */
   const [formInput, setFormInput] = useState<RawOnboardingFormInput>(() => {
-    if (initialProfile) {
+    if (mode === 'edit' && initialProfile) {
       return {
         fullName: initialProfile.fullName,
         branch: initialProfile.branch,
@@ -82,37 +95,43 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
         preferredLearningMethod: initialProfile.preferredLearningMethod,
       };
     }
-
-    return {
-      fullName: '',
-      branch: '',
-      customBranchName: '',
-      currentYear: '',
-      currentSemester: '',
-      subjectsText: '',
-      careerGoal: '',
-      knownSkillsText: '',
-      weeklyStudyHours: '',
-      preferredLearningMethod: '',
-    };
+    return { ...EMPTY_FORM_STATE };
   });
 
-  /**
-   * `hasSubmittedOnce` tracks whether the student has clicked the Submit button yet.
-   * Why? Showing 8 red error messages the very second a user opens a blank form feels
-   * hostile. Instead, we only display all errors after their first submit attempt,
-   * or on individual fields they have already touched.
-   */
   const [hasSubmittedOnce, setHasSubmittedOnce] = useState<boolean>(false);
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
-
-  // Run our pure validation function on the current form state
-  const { errors, isValid } = validateOnboardingForm(formInput);
+  const [confirmOverwriteModal, setConfirmOverwriteModal] = useState<StudentProfile | null>(null);
 
   /**
-   * Helper to update a single property in `formInput` while keeping all other
-   * fields unchanged (using the JavaScript object spread operator `...prev`).
+   * Whenever `mode` is `'onboarding'`, guarantee that all form fields and
+   * validation messages are reset to empty on mount.
    */
+  useEffect(() => {
+    if (mode === 'onboarding') {
+      setFormInput({ ...EMPTY_FORM_STATE });
+      setHasSubmittedOnce(false);
+      setTouchedFields({});
+      setConfirmOverwriteModal(null);
+    } else if (mode === 'edit' && initialProfile) {
+      setFormInput({
+        fullName: initialProfile.fullName,
+        branch: initialProfile.branch,
+        customBranchName: initialProfile.customBranchName || '',
+        currentYear: initialProfile.currentYear,
+        currentSemester: initialProfile.currentSemester,
+        subjectsText: initialProfile.currentSubjects.join(', '),
+        careerGoal: initialProfile.careerGoal,
+        knownSkillsText: initialProfile.knownSkills.join(', '),
+        weeklyStudyHours: String(initialProfile.weeklyStudyHours),
+        preferredLearningMethod: initialProfile.preferredLearningMethod,
+      });
+      setHasSubmittedOnce(false);
+      setTouchedFields({});
+    }
+  }, [mode, initialProfile]);
+
+  const { errors, isValid } = validateOnboardingForm(formInput);
+
   const updateField = <K extends keyof RawOnboardingFormInput>(
     field: K,
     value: RawOnboardingFormInput[K]
@@ -123,10 +142,6 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
     }));
   };
 
-  /**
-   * Mark a field as "touched" when the user leaves (blurs) an input, so any
-   * validation error for that specific field can be displayed immediately.
-   */
   const markFieldTouched = (fieldName: string) => {
     setTouchedFields((prev) => ({
       ...prev,
@@ -134,19 +149,10 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
     }));
   };
 
-  /**
-   * Helper to decide whether to show an error message for a specific field.
-   */
   const shouldShowError = (fieldName: keyof typeof errors): boolean => {
     return Boolean(errors[fieldName] && (hasSubmittedOnce || touchedFields[fieldName]));
   };
 
-  /**
-   * When the student changes their BTech Year (e.g., to "2nd Year"), we check if
-   * their currently selected semester matches that year. If not, we automatically
-   * pre-select the first semester of that year (e.g., "Semester 3") to save clicks
-   * and prevent year/semester mismatch errors.
-   */
   const handleYearChange = (newYear: AcademicYear) => {
     const matchingSemesters = getExpectedSemestersForYear(newYear);
     const currentSemStillValid =
@@ -162,10 +168,6 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
     markFieldTouched('currentYear');
   };
 
-  /**
-   * Toggle a suggested subject into or out of the comma-separated `subjectsText` field.
-   * This lets students either type custom subjects OR click branch suggestions.
-   */
   const handleToggleSubjectSuggestion = (subjectName: string) => {
     const currentList = parseCommaSeparatedList(formInput.subjectsText);
     const exists = currentList.some(
@@ -181,9 +183,14 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
   };
 
   /**
-   * Quick-fill helper so learners or testers can populate realistic BTech student
-   * data with one click and inspect how the form and dashboard behave.
+   * Reset only the form inputs (without touching saved student data in storage).
    */
+  const handleClearFormInputsOnly = () => {
+    setFormInput({ ...EMPTY_FORM_STATE });
+    setHasSubmittedOnce(false);
+    setTouchedFields({});
+  };
+
   const handleFillSampleStudent = () => {
     setFormInput({
       fullName: 'Aarav Sharma',
@@ -202,27 +209,27 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
     setTouchedFields({});
   };
 
-  /**
-   * Form Submit Event Handler:
-   * 1. Calls `event.preventDefault()` to stop the browser from doing a full-page reload.
-   * 2. Marks `hasSubmittedOnce = true` so any remaining validation errors become visible.
-   * 3. If `!isValid`, stops immediately so invalid data can never reach the Dashboard.
-   * 4. If valid, cleans and formats the data into a `StudentProfile` object and passes
-   *    it up to `App.tsx`.
-   */
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setHasSubmittedOnce(true);
 
-    if (!isValid || !formInput.branch || !formInput.currentYear || !formInput.currentSemester || !formInput.preferredLearningMethod) {
+    if (
+      !isValid ||
+      !formInput.branch ||
+      !formInput.currentYear ||
+      !formInput.currentSemester ||
+      !formInput.preferredLearningMethod
+    ) {
       return;
     }
 
+    const nowIso = new Date().toISOString();
     const cleanedProfile: StudentProfile = {
+      userId: initialProfile?.userId || activeUserId,
       fullName: formInput.fullName.trim(),
       branch: formInput.branch,
       customBranchName:
-        formInput.branch === 'Other' ? formInput.customBranchName.trim() : undefined,
+        formInput.branch === 'Other' ? formInput.customBranchName.trim() : '',
       currentYear: formInput.currentYear,
       currentSemester: formInput.currentSemester,
       currentSubjects: parseCommaSeparatedList(formInput.subjectsText),
@@ -230,13 +237,20 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
       knownSkills: parseCommaSeparatedList(formInput.knownSkillsText),
       weeklyStudyHours: Number(formInput.weeklyStudyHours.trim()),
       preferredLearningMethod: formInput.preferredLearningMethod,
-      updatedAt: new Date().toISOString(),
+      createdAt: initialProfile?.createdAt || nowIso,
+      updatedAt: nowIso,
     };
 
-    onCompleteOnboarding(cleanedProfile);
+    // If starting a new onboarding when a saved profile already exists,
+    // ask for explicit confirmation before replacing existing saved profile/roadmap data.
+    if (mode === 'onboarding' && hasExistingSavedData) {
+      setConfirmOverwriteModal(cleanedProfile);
+      return;
+    }
+
+    onSaveProfile(cleanedProfile, false);
   };
 
-  // Look up branch-specific suggestions if the student has selected a branch
   const activeBranchSuggestions = formInput.branch
     ? BRANCH_SUGGESTIONS[formInput.branch]
     : null;
@@ -244,9 +258,9 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
   const expectedSemesters = getExpectedSemestersForYear(formInput.currentYear);
 
   return (
-    <div className="min-h-screen bg-slate-50 py-10 px-4 sm:px-6">
-      <div className="max-w-3xl mx-auto">
-        {/* Top Action Row: Back button & Sample Fill helper */}
+    <div className={mode === 'onboarding' ? 'min-h-screen bg-slate-50 py-10 px-4 sm:px-6' : ''}>
+      <div className={mode === 'onboarding' ? 'max-w-3xl mx-auto' : ''}>
+        {/* Top Action Row */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <button
             type="button"
@@ -254,41 +268,56 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
             className="inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>{initialProfile ? 'Back to Dashboard' : 'Back to Landing Page'}</span>
+            <span>
+              {mode === 'edit'
+                ? 'Cancel Edit & Return to My Profile'
+                : hasExistingSavedData
+                ? 'Cancel (Keep Existing Saved Data)'
+                : 'Back to Landing Page'}
+            </span>
           </button>
 
-          <button
-            type="button"
-            onClick={handleFillSampleStudent}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Fill Sample Student Data</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleClearFormInputsOnly}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              Clear Form Fields
+            </button>
+            <button
+              type="button"
+              onClick={handleFillSampleStudent}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Fill Sample Student Data</span>
+            </button>
+          </div>
         </div>
 
-        {/* Main Onboarding Card */}
+        {/* Main Form Card */}
         <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-10">
           <div className="border-b border-slate-200 pb-6 mb-8">
             <p className="text-xs font-semibold text-blue-700">
-              {initialProfile ? 'Update Your Student Profile' : 'Step 1 of 1 · Student Onboarding'}
+              {mode === 'edit'
+                ? 'My Profile · Edit Saved Information'
+                : 'Fresh Onboarding · All Fields Reset'}
             </p>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 mt-1">
-              {initialProfile
-                ? 'Edit Your PathPilot Engineering Profile'
+              {mode === 'edit'
+                ? 'Edit Your Student Profile'
                 : 'Configure Your BTech Roadmap'}
             </h1>
             <p className="text-sm text-slate-600 mt-2">
-              Tell us about your current BTech semester, college subjects, and target engineering
-              field. Fields marked with <span className="text-red-600 font-semibold">*</span> are
-              required.
+              {mode === 'edit'
+                ? 'Update your academic details below. Your saved profile will only be updated when you click "Save Changes".'
+                : 'Enter your BTech branch, current semester, subjects, and career goal to generate your personalized roadmap. Fields marked with * are required.'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} noValidate className="space-y-8">
-            {/* ===============================================================
-                1. FULL NAME
-                =============================================================== */}
+            {/* 1. Full Name */}
             <div>
               <label
                 htmlFor="fullName"
@@ -310,21 +339,19 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                 }`}
               />
               {shouldShowError('fullName') && (
-                <p role="alert" className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                <p
+                  role="alert"
+                  className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                >
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{errors.fullName}</span>
                 </p>
               )}
             </div>
 
-            {/* ===============================================================
-                2. BTECH BRANCH
-                =============================================================== */}
+            {/* 2. BTech Branch */}
             <div>
-              <label
-                htmlFor="branch"
-                className="block text-sm font-semibold text-slate-900 mb-1.5"
-              >
+              <label className="block text-sm font-semibold text-slate-900 mb-1.5">
                 BTech Branch <span className="text-red-600">*</span>
               </label>
               <p className="text-xs text-slate-500 mb-3">
@@ -368,13 +395,15 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
               </div>
 
               {shouldShowError('branch') && (
-                <p role="alert" className="mt-2 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                <p
+                  role="alert"
+                  className="mt-2 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                >
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{errors.branch}</span>
                 </p>
               )}
 
-              {/* Conditional input when branch === 'Other' */}
               {formInput.branch === 'Other' && (
                 <div className="mt-4">
                   <label
@@ -397,7 +426,10 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                     }`}
                   />
                   {shouldShowError('customBranchName') && (
-                    <p role="alert" className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                    <p
+                      role="alert"
+                      className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                    >
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                       <span>{errors.customBranchName}</span>
                     </p>
@@ -406,11 +438,8 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
               )}
             </div>
 
-            {/* ===============================================================
-                3 & 4. CURRENT YEAR AND CURRENT SEMESTER
-                =============================================================== */}
+            {/* 3 & 4. Current Year and Current Semester */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {/* Current Year */}
               <div>
                 <label className="block text-sm font-semibold text-slate-900 mb-1.5">
                   Current Year <span className="text-red-600">*</span>
@@ -435,14 +464,16 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                   })}
                 </div>
                 {shouldShowError('currentYear') && (
-                  <p role="alert" className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                  <p
+                    role="alert"
+                    className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                  >
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     <span>{errors.currentYear}</span>
                   </p>
                 )}
               </div>
 
-              {/* Current Semester */}
               <div>
                 <label
                   htmlFor="currentSemester"
@@ -480,7 +511,10 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                   </p>
                 )}
                 {shouldShowError('currentSemester') && (
-                  <p role="alert" className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                  <p
+                    role="alert"
+                    className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                  >
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     <span>{errors.currentSemester}</span>
                   </p>
@@ -488,9 +522,7 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
               </div>
             </div>
 
-            {/* ===============================================================
-                5. CURRENT ACADEMIC SUBJECTS
-                =============================================================== */}
+            {/* 5. Current Academic Subjects */}
             <div>
               <div className="flex items-baseline justify-between gap-2 mb-1">
                 <label
@@ -500,7 +532,8 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                   Current Academic Subjects <span className="text-red-600">*</span>
                 </label>
                 <span className="text-xs font-mono tabular-nums text-slate-500">
-                  {parsedCurrentSubjects.length} subject{parsedCurrentSubjects.length === 1 ? '' : 's'} added
+                  {parsedCurrentSubjects.length} subject
+                  {parsedCurrentSubjects.length === 1 ? '' : 's'} added
                 </span>
               </div>
               <p className="text-xs text-slate-500 mb-2.5">
@@ -521,11 +554,12 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                 }`}
               />
 
-              {/* Branch-aware quick-add subject buttons */}
               {activeBranchSuggestions && (
                 <div className="mt-3">
                   <p className="text-xs text-slate-500 mb-2">
-                    Quick-add common <span className="font-semibold text-slate-700">{formInput.branch}</span> subjects (click to toggle):
+                    Quick-add common{' '}
+                    <span className="font-semibold text-slate-700">{formInput.branch}</span>{' '}
+                    subjects (click to toggle):
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {activeBranchSuggestions.subjects.map((subject) => {
@@ -552,16 +586,17 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
               )}
 
               {shouldShowError('currentSubjects') && (
-                <p role="alert" className="mt-2 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                <p
+                  role="alert"
+                  className="mt-2 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                >
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{errors.currentSubjects}</span>
                 </p>
               )}
             </div>
 
-            {/* ===============================================================
-                6. CAREER GOAL OR PREFERRED FIELD
-                =============================================================== */}
+            {/* 6. Career Goal */}
             <div>
               <label
                 htmlFor="careerGoal"
@@ -586,7 +621,6 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                 }`}
               />
 
-              {/* Quick career goal suggestions for the selected branch */}
               {activeBranchSuggestions && (
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
                   <span className="text-xs text-slate-500">Suggestions:</span>
@@ -611,25 +645,27 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
               )}
 
               {shouldShowError('careerGoal') && (
-                <p role="alert" className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                <p
+                  role="alert"
+                  className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                >
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{errors.careerGoal}</span>
                 </p>
               )}
             </div>
 
-            {/* ===============================================================
-                7. SKILLS ALREADY KNOWN (Optional — handles empty gracefully)
-                =============================================================== */}
+            {/* 7. Skills Already Known */}
             <div>
-              <div className="flex items-baseline justify-between gap-2 mb-1">
-                <label
-                  htmlFor="knownSkillsText"
-                  className="block text-sm font-semibold text-slate-900"
-                >
-                  Skills Already Known <span className="text-xs font-normal text-slate-500">(Optional for beginners)</span>
-                </label>
-              </div>
+              <label
+                htmlFor="knownSkillsText"
+                className="block text-sm font-semibold text-slate-900 mb-1"
+              >
+                Skills Already Known{' '}
+                <span className="text-xs font-normal text-slate-500">
+                  (Optional for beginners)
+                </span>
+              </label>
               <p className="text-xs text-slate-500 mb-2.5">
                 List any programming languages, CAD/simulation software, lab tools, or frameworks
                 you already know. Leave blank if you are starting fresh.
@@ -644,11 +680,8 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
               />
             </div>
 
-            {/* ===============================================================
-                8 & 9. STUDY HOURS PER WEEK & PREFERRED LEARNING METHOD
-                =============================================================== */}
+            {/* 8 & 9. Weekly Study Hours and Preferred Learning Method */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {/* Available Study Hours Per Week */}
               <div>
                 <label
                   htmlFor="weeklyStudyHours"
@@ -659,25 +692,22 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                 <p className="text-xs text-slate-500 mb-2.5">
                   Hours outside college lectures for skills & projects (1–60 hrs).
                 </p>
-                <div className="relative">
-                  <input
-                    id="weeklyStudyHours"
-                    type="number"
-                    min={1}
-                    max={60}
-                    step={1}
-                    value={formInput.weeklyStudyHours}
-                    onChange={(e) => updateField('weeklyStudyHours', e.target.value)}
-                    onBlur={() => markFieldTouched('weeklyStudyHours')}
-                    placeholder="e.g., 10"
-                    className={`w-full px-4 py-2.5 text-sm font-mono tabular-nums rounded-xl border bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
-                      shouldShowError('weeklyStudyHours')
-                        ? 'border-red-500 focus:ring-red-200'
-                        : 'border-slate-300 focus:border-blue-600 focus:ring-blue-100'
-                    }`}
-                  />
-                </div>
-                {/* Quick hour presets */}
+                <input
+                  id="weeklyStudyHours"
+                  type="number"
+                  min={1}
+                  max={60}
+                  step={1}
+                  value={formInput.weeklyStudyHours}
+                  onChange={(e) => updateField('weeklyStudyHours', e.target.value)}
+                  onBlur={() => markFieldTouched('weeklyStudyHours')}
+                  placeholder="e.g., 10"
+                  className={`w-full px-4 py-2.5 text-sm font-mono tabular-nums rounded-xl border bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
+                    shouldShowError('weeklyStudyHours')
+                      ? 'border-red-500 focus:ring-red-200'
+                      : 'border-slate-300 focus:border-blue-600 focus:ring-blue-100'
+                  }`}
+                />
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-xs text-slate-500">Quick pick:</span>
                   {['6', '10', '15', '20'].map((hrs) => (
@@ -699,14 +729,16 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                   ))}
                 </div>
                 {shouldShowError('weeklyStudyHours') && (
-                  <p role="alert" className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                  <p
+                    role="alert"
+                    className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                  >
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     <span>{errors.weeklyStudyHours}</span>
                   </p>
                 )}
               </div>
 
-              {/* Preferred Learning Method */}
               <div>
                 <label
                   htmlFor="preferredLearningMethod"
@@ -739,7 +771,10 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
                   ))}
                 </select>
                 {shouldShowError('preferredLearningMethod') && (
-                  <p role="alert" className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5">
+                  <p
+                    role="alert"
+                    className="mt-1.5 text-xs font-medium text-red-600 flex items-center gap-1.5"
+                  >
                     <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                     <span>{errors.preferredLearningMethod}</span>
                   </p>
@@ -747,14 +782,13 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
               </div>
             </div>
 
-            {/* Form-level validation summary banner if user tried to submit with errors */}
             {hasSubmittedOnce && !isValid && (
               <div
                 role="alert"
                 className="p-4 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 space-y-1"
               >
                 <p className="font-bold">
-                  Please resolve the highlighted fields before generating your dashboard:
+                  Please resolve the highlighted fields before saving:
                 </p>
                 <ul className="list-disc list-inside space-y-0.5">
                   {Object.values(errors).map((errMsg, idx) => (
@@ -767,26 +801,69 @@ export const OnboardingForm: React.FC<OnboardingFormProps> = ({
             {/* Submit & Cancel Actions */}
             <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <p className="text-xs text-slate-500">
-                 Stored in browser session state (Version 1 Foundation)
+                {mode === 'edit'
+                  ? 'Changes are only saved when you click "Save Changes" below.'
+                  : 'Existing saved data is never overwritten if you cancel.'}
               </p>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={onCancel}
+                  disabled={isSaving}
                   className="px-4 py-2.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 text-xs font-semibold text-white bg-blue-700 rounded-xl hover:bg-blue-800 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 text-xs font-semibold text-white bg-blue-700 rounded-xl hover:bg-blue-800 transition-colors cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-60"
                 >
-                  {initialProfile ? 'Save Changes & Return to Dashboard' : 'Launch My Personalized Dashboard'}
+                  {isSaving
+                    ? 'Saving...'
+                    : mode === 'edit'
+                    ? 'Save Changes'
+                    : 'Save Profile & Build My Roadmap'}
                 </button>
               </div>
             </div>
           </form>
         </div>
+
+        {/* Confirmation Dialog before replacing an already-saved profile/roadmap during re-onboarding */}
+        {confirmOverwriteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+            <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+              <h2 className="text-base font-bold text-slate-900">
+                Confirm New Onboarding Profile
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                You already have a saved student profile ({initialProfile?.fullName}). How would
+                you like to save this new onboarding submission?
+              </p>
+              <div className="space-y-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = confirmOverwriteModal;
+                    setConfirmOverwriteModal(null);
+                    onSaveProfile(target, true);
+                  }}
+                  className="w-full px-4 py-2.5 text-xs font-semibold text-white bg-blue-700 rounded-xl hover:bg-blue-800 transition-colors cursor-pointer"
+                >
+                  Replace Current Profile & Generate Roadmap for {confirmOverwriteModal.currentSemester}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmOverwriteModal(null)}
+                  className="w-full px-4 py-2.5 text-xs font-semibold text-slate-700 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancel (Keep Existing Saved Data)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

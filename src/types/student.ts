@@ -2,21 +2,17 @@
  * ============================================================================
  * FILE: src/types/student.ts
  * PURPOSE: Defines the data shapes (TypeScript interfaces) and fixed options
- *          used across PathPilot.
+ *          used across PathPilot for persistent student profiles, semester-wise
+ *          roadmaps, skills, projects, opportunities, and progress tracking.
  *
  * WHY THIS FILE EXISTS (Beginner Concept — TypeScript Interfaces):
- * In a web application, data travels between multiple screens (from the
- * Onboarding Form -> to App.tsx -> to the Dashboard). Defining a strict
- * "contract" (Interface) here ensures every component agrees on the exact
- * property names and data types (string, number, array), preventing typos
- * and undefined bugs before the code even runs.
+ * In a web application, data travels between multiple screens and database
+ * collections (from Onboarding -> Storage Service -> Dashboard sections).
+ * Defining strict TypeScript interfaces ensures every component and database
+ * operation agrees on exact property names and data types.
  * ============================================================================
  */
 
-/**
- * The allowed BTech engineering branches as requested in the specification.
- * Using a TypeScript union type restricts values to only these exact strings.
- */
 export type EngineeringBranch =
   | 'CSE'
   | 'IT'
@@ -26,14 +22,8 @@ export type EngineeringBranch =
   | 'Civil'
   | 'Other';
 
-/**
- * The 4 academic years of a standard BTech degree program.
- */
 export type AcademicYear = '1st Year' | '2nd Year' | '3rd Year' | '4th Year';
 
-/**
- * The 8 semesters of a standard BTech degree program.
- */
 export type AcademicSemester =
   | 'Semester 1'
   | 'Semester 2'
@@ -44,9 +34,6 @@ export type AcademicSemester =
   | 'Semester 7'
   | 'Semester 8';
 
-/**
- * How the student prefers to learn new engineering concepts and skills.
- */
 export type LearningMethod =
   | 'Hands-on Project Building'
   | 'Video Lectures & Visual Walkthroughs'
@@ -55,21 +42,23 @@ export type LearningMethod =
   | 'Structured Peer Study & Problem Sets';
 
 /**
- * StudentProfile represents the complete set of information collected
- * from the student during onboarding and displayed on the Dashboard.
+ * StudentProfile represents the persistent profile of a student.
+ * Includes `userId` to uniquely identify and isolate each student's records.
  */
 export interface StudentProfile {
+  userId: string;
   fullName: string;
   branch: EngineeringBranch;
-  customBranchName?: string; // Used when branch === 'Other'
+  customBranchName: string; // Empty string '' when branch !== 'Other'
   currentYear: AcademicYear;
   currentSemester: AcademicSemester;
-  currentSubjects: string[]; // Stored as an array of clean subject names
+  currentSubjects: string[];
   careerGoal: string;
-  knownSkills: string[]; // Can be empty if the student is a complete beginner
-  weeklyStudyHours: number; // Number of hours available outside regular classes
+  knownSkills: string[];
+  weeklyStudyHours: number;
   preferredLearningMethod: LearningMethod;
-  updatedAt: string; // ISO date string showing when the profile was saved
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -89,38 +78,201 @@ export interface ValidationErrors {
 }
 
 /**
- * Identifiers for the 7 required Dashboard navigation sections plus the
- * main 'overview' home screen of the dashboard.
+ * Connects one academic subject from the student's semester syllabus to a
+ * real-world engineering application and career skill.
  */
-export type DashboardSectionId =
-  | 'overview'
-  | 'my-roadmap'
-  | 'subject-applications'
-  | 'skills'
-  | 'projects'
-  | 'internships-hackathons'
-  | 'progress-tracker'
-  | 'placement-prep';
-
-/**
- * Metadata describing each of the 7 required navigation sections in the
- * Dashboard so we can render navigation items and section placeholders cleanly
- * without repeating code.
- */
-export interface DashboardSectionMeta {
-  id: DashboardSectionId;
-  number: string;
-  title: string;
-  shortLabel: string;
-  summary: string;
-  plannedCapabilities: string[];
-  dataInputsUsed: string[];
-  futureInteractivePreview: string;
+export interface SubjectBridgeItem {
+  id: string;
+  subjectName: string;
+  classroomConcepts: string;
+  realWorldApplication: string;
+  industrySkillUnlocked: string;
+  studyResourceFormat: string;
+  isExplored: boolean;
 }
 
 /**
- * Fixed list of engineering branches with full descriptive titles for the UI.
+ * Represents one of the 4 monthly phases within a 16-week engineering semester.
  */
+export interface MonthlyPlanItem {
+  id: string;
+  monthNumber: number;
+  title: string;
+  focusSummary: string;
+  targetOutcome: string;
+  isCompleted: boolean;
+}
+
+/**
+ * Represents a weekly study block in the student's semester roadmap.
+ */
+export interface WeeklyPlanItem {
+  id: string;
+  weekNumber: number;
+  title: string;
+  subjectLinked: string;
+  allocatedHours: number;
+  deliverableTask: string;
+  learningResource: string;
+  isCompleted: boolean;
+  wasRearranged: boolean;
+}
+
+/**
+ * Represents a technical skill and its curated learning resource for a semester.
+ */
+export interface SkillResourceItem {
+  id: string;
+  skillName: string;
+  category: 'Baseline Known' | 'Subject-Linked Core' | 'Career Target Skill';
+  linkedSubject: string;
+  resourceTitle: string;
+  resourceType: string;
+  estimatedHours: number;
+  status: 'planned' | 'in-progress' | 'mastered';
+}
+
+/**
+ * Represents an engineering project and its milestone checklist for a semester.
+ */
+export interface ProjectItem {
+  id: string;
+  title: string;
+  linkedSubjects: string[];
+  targetSkill: string;
+  problemStatement: string;
+  realWorldContext: string;
+  estimatedHours: number;
+  status: 'not-started' | 'in-progress' | 'completed';
+  progressPercent: number;
+  milestones: {
+    id: string;
+    label: string;
+    completed: boolean;
+  }[];
+}
+
+/**
+ * Represents an internship, hackathon, or fellowship opportunity for the semester.
+ */
+export interface OpportunityItem {
+  id: string;
+  title: string;
+  type: 'Internship' | 'Hackathon' | 'Research / Open-Source';
+  eligibilityYear: string;
+  timelineWindow: string;
+  whyRelevant: string;
+  requiredSkills: string[];
+  status: 'suggested' | 'saved' | 'applied' | 'completed';
+}
+
+/**
+ * Represents a year-appropriate placement preparation task for the semester.
+ */
+export interface PlacementTaskItem {
+  id: string;
+  title: string;
+  category: 'Core Fundamentals' | 'Problem Solving' | 'Portfolio & Resume' | 'Interview Readiness';
+  description: string;
+  completed: boolean;
+}
+
+/**
+ * SemesterRecord holds ALL generated and saved recommendations, tasks, skills,
+ * projects, opportunities, and progress for one specific semester (e.g., Semester 3).
+ *
+ * Organizing everything inside a per-semester record allows the student to:
+ * 1. View their current semester
+ * 2. Revisit any previous semester without losing data
+ * 3. Mark a semester complete
+ * 4. Start a new semester while keeping all previous semester records intact
+ */
+export interface SemesterRecord {
+  semesterId: string; // e.g. 'sem_1', 'sem_2', ..., 'sem_8'
+  userId: string;
+  semesterName: AcademicSemester;
+  academicYear: AcademicYear;
+  branch: EngineeringBranch;
+  careerGoal: string;
+  weeklyStudyHours: number;
+  preferredLearningMethod: LearningMethod;
+  subjects: string[];
+  status: 'active' | 'completed';
+  progressPercent: number;
+  subjectBridges: SubjectBridgeItem[];
+  monthlyPlans: MonthlyPlanItem[];
+  weeklyPlans: WeeklyPlanItem[];
+  skills: SkillResourceItem[];
+  projects: ProjectItem[];
+  opportunities: OpportunityItem[];
+  placementTasks: PlacementTaskItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Identifiers for the 6 separated Dashboard sections requested in Requirement 5:
+ * - My Profile
+ * - My Roadmap
+ * - My Skills
+ * - My Projects
+ * - My Opportunities
+ * - My Progress
+ */
+export type DashboardSectionId =
+  | 'my-profile'
+  | 'my-roadmap'
+  | 'my-skills'
+  | 'my-projects'
+  | 'my-opportunities'
+  | 'my-progress';
+
+export interface DashboardSectionNavMeta {
+  id: DashboardSectionId;
+  number: string;
+  title: string;
+  description: string;
+}
+
+export const DASHBOARD_NAVIGATION_SECTIONS: DashboardSectionNavMeta[] = [
+  {
+    id: 'my-profile',
+    number: '01',
+    title: 'My Profile',
+    description: 'Your saved academic profile, edit controls, semester switcher, and completed history across previous semesters.',
+  },
+  {
+    id: 'my-roadmap',
+    number: '02',
+    title: 'My Roadmap',
+    description: 'Semester-wise Subject-to-Real-World bridges, monthly milestones, and weekly study plan.',
+  },
+  {
+    id: 'my-skills',
+    number: '03',
+    title: 'My Skills',
+    description: 'Baseline known skills, target engineering skills, and learning resources matched to your study preference.',
+  },
+  {
+    id: 'my-projects',
+    number: '04',
+    title: 'My Projects',
+    description: 'Portfolio projects connecting your current semester subjects to your target career field.',
+  },
+  {
+    id: 'my-opportunities',
+    number: '05',
+    title: 'My Opportunities',
+    description: 'Year-matched internships, hackathons, technical competitions, and placement preparation tasks.',
+  },
+  {
+    id: 'my-progress',
+    number: '06',
+    title: 'My Progress',
+    description: 'Completion analytics, milestone tracker, and adaptive timetable rearrangement for missed weeks.',
+  },
+];
+
 export const BRANCH_OPTIONS: { value: EngineeringBranch; label: string; coreFocus: string }[] = [
   { value: 'CSE', label: 'CSE — Computer Science & Engineering', coreFocus: 'Algorithms, Systems, AI & Full-Stack Software' },
   { value: 'IT', label: 'IT — Information Technology', coreFocus: 'Cloud Infrastructure, Web Systems, Networks & Security' },
@@ -152,11 +304,6 @@ export const LEARNING_METHOD_OPTIONS: LearningMethod[] = [
   'Structured Peer Study & Problem Sets',
 ];
 
-/**
- * Helper mapping that suggests typical college subjects and career goals
- * based on the student's selected branch. This makes filling out the
- * onboarding form faster and more intuitive for students.
- */
 export const BRANCH_SUGGESTIONS: Record<
   EngineeringBranch,
   {
@@ -324,124 +471,3 @@ export const BRANCH_SUGGESTIONS: Record<
     },
   },
 };
-
-/**
- * The 7 required dashboard navigation sections defined in the project specification.
- * In Version 1, each section renders a clear, honest architectural blueprint
- * showing how the student's onboarding inputs will power that module in upcoming versions.
- */
-export const DASHBOARD_SECTIONS: DashboardSectionMeta[] = [
-  {
-    id: 'my-roadmap',
-    number: '01',
-    title: 'My Roadmap',
-    shortLabel: 'My Roadmap',
-    summary:
-      'Year-by-year and semester-by-semester engineering action plan tailored to your branch, weekly study hours, and target career role.',
-    plannedCapabilities: [
-      'Semester milestone breakdown balancing university exams with career skill sprints',
-      'Weekly study block allocator calibrated to your exact available hours per week',
-      'Dynamic timetable rearrangement engine that reschedules missed study blocks automatically when college labs or exams overrun',
-      'Learning-mode adaptation that prioritizes resources matching your preferred learning style',
-    ],
-    dataInputsUsed: ['Branch', 'Current Year & Semester', 'Available Study Hours/Week', 'Preferred Learning Method'],
-    futureInteractivePreview:
-      'In Version 2, this view will generate a week-by-week timeline with a "Missed a Week? Rearrange Timetable" action that redistributes unfinished topics across upcoming weeks without overloading exam weeks.',
-  },
-  {
-    id: 'subject-applications',
-    number: '02',
-    title: 'Subject-to-Real-World Applications',
-    shortLabel: 'Subject Bridge',
-    summary:
-      'PathPilot’s core differentiator: translating every theoretical syllabus unit you study in class into concrete industrial engineering systems.',
-    plannedCapabilities: [
-      'Direct mapping from each of your current semester subjects to real-world production hardware and software systems',
-      'Why-It-Matters breakdown showing where formulas, theorems, and lab experiments appear in industry engineering interviews',
-      'Interactive concept-to-application bridge cards linking syllabus theory to open-source tools and engineering workflows',
-    ],
-    dataInputsUsed: ['Current Academic Subjects', 'BTech Branch', 'Career Goal'],
-    futureInteractivePreview:
-      'In Version 2, clicking any of your entered subjects will expand unit-by-unit cards showing the exact industrial machinery, software architecture, or physical system built on top of that theory.',
-  },
-  {
-    id: 'skills',
-    number: '03',
-    title: 'Skills',
-    shortLabel: 'Skills Matrix',
-    summary:
-      'Gap analysis comparing the skills you already know against the core competencies required for your target engineering career goal.',
-    plannedCapabilities: [
-      'Three-tier skill tree: Foundation (Core Subject Linked), Applied Tooling, and Production Engineering',
-      'Automatic filtering that marks your already-known skills as baseline and highlights high-impact next skills',
-      'Curated study format recommendations aligned with your preferred learning method',
-    ],
-    dataInputsUsed: ['Skills Already Known', 'Career Goal', 'Preferred Learning Method'],
-    futureInteractivePreview:
-      'In Version 2, you will be able to toggle skill proficiency levels (Beginner -> Applied -> Project-Proven) and see which semester subject reinforces each technical skill.',
-  },
-  {
-    id: 'projects',
-    number: '04',
-    title: 'Projects',
-    shortLabel: 'Projects',
-    summary:
-      'Portfolio-grade engineering project blueprints that combine your current semester subjects with industry-standard tools.',
-    plannedCapabilities: [
-      'Subject-integrated project briefs so your semester mini-project doubles as a standout resume asset',
-      'Architecture milestones, hardware/software bill of materials, and realistic completion time estimates',
-      'Evaluation rubric showing how to document engineering trade-offs rather than just copying tutorial code',
-    ],
-    dataInputsUsed: ['Current Academic Subjects', 'Skills Already Known', 'Available Study Hours/Week'],
-    futureInteractivePreview:
-      'In Version 2, this module will unlock step-by-step project workspaces scoped to your weekly hour budget and linked directly to the subjects you are taking this semester.',
-  },
-  {
-    id: 'internships-hackathons',
-    number: '05',
-    title: 'Internships and Hackathons',
-    shortLabel: 'Internships & Hackathons',
-    summary:
-      'Year-appropriate research internships, industrial training programs, technical competitions, and open-source fellowships.',
-    plannedCapabilities: [
-      'Eligibility filter matched to your current BTech year (1st/2nd year exploration vs. 3rd/4th year pre-placement internships)',
-      'Application window timeline so you never miss academic research fellowships, PSU/core internships, or major hackathons',
-      'Readiness checklist mapping required skills before you submit an application',
-    ],
-    dataInputsUsed: ['BTech Branch', 'Current Year', 'Career Goal', 'Skills Already Known'],
-    futureInteractivePreview:
-      'In Version 2, this view will organize upcoming opportunities by preparation lead-time and readiness match for your specific engineering branch and year.',
-  },
-  {
-    id: 'progress-tracker',
-    number: '06',
-    title: 'Progress Tracker',
-    shortLabel: 'Progress & Timetable',
-    summary:
-      'Weekly consistency tracker and adaptive timetable scheduler that helps you recover smoothly when mid-sems or lab submissions disrupt your plan.',
-    plannedCapabilities: [
-      'Weekly planned hours vs. completed hours log with realistic pace indicators',
-      'One-click "Rearrange Missed Schedule" calculator that re-balances backlog tasks across future weeks',
-      'Subject concept mastery log connected to your project and skill milestones',
-    ],
-    dataInputsUsed: ['Available Study Hours/Week', 'Current Semester', 'Current Academic Subjects'],
-    futureInteractivePreview:
-      'In Version 2, you will log weekly hours here and trigger the Adaptive Timetable Rearranger whenever exams, illness, or college events cause you to miss planned sessions.',
-  },
-  {
-    id: 'placement-prep',
-    number: '07',
-    title: 'Placement Preparation',
-    shortLabel: 'Placement Prep',
-    summary:
-      'Year-by-year placement readiness covering core technical fundamentals, problem solving, system/domain design, and project defense.',
-    plannedCapabilities: [
-      'Stage-gated preparation plan appropriate for your current BTech year (no 4th-year panic cramming)',
-      'Core subject interview question bank tied directly to the academic subjects you have completed',
-      'Resume bullet synthesizer that frames your academic labs and projects around measurable engineering outcomes',
-    ],
-    dataInputsUsed: ['Current Year & Semester', 'BTech Branch', 'Career Goal', 'Current Academic Subjects'],
-    futureInteractivePreview:
-      'In Version 2, this section will unlock branch-specific technical interview readiness tracks, core subject revision sheets, and project storytelling checklists.',
-  },
-];

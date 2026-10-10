@@ -1,0 +1,276 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // 1. GLOBAL SAFETY NET (Default-Deny Catch-All)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // 2. HARDENED PRIMITIVE HELPERS
+    // =========================================================================
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // =========================================================================
+    // 3. ENTITY VALIDATION BLUEPRINTS (Anti-Update-Gap & Volumetric Guards)
+    // =========================================================================
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'userId',
+        'fullName',
+        'branch',
+        'customBranchName',
+        'currentYear',
+        'currentSemester',
+        'currentSubjects',
+        'careerGoal',
+        'knownSkills',
+        'weeklyStudyHours',
+        'preferredLearningMethod',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'userId',
+        'fullName',
+        'branch',
+        'customBranchName',
+        'currentYear',
+        'currentSemester',
+        'currentSubjects',
+        'careerGoal',
+        'knownSkills',
+        'weeklyStudyHours',
+        'preferredLearningMethod',
+        'createdAt',
+        'updatedAt'
+      ])
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 80
+      && data.branch is string && data.branch in ['CSE', 'IT', 'ECE', 'EEE', 'Mechanical', 'Civil', 'Other']
+      && data.customBranchName is string && data.customBranchName.size() <= 80
+      && data.currentYear is string && data.currentYear in ['1st Year', '2nd Year', '3rd Year', '4th Year']
+      && data.currentSemester is string && data.currentSemester in [
+        'Semester 1', 'Semester 2', 'Semester 3', 'Semester 4',
+        'Semester 5', 'Semester 6', 'Semester 7', 'Semester 8'
+      ]
+      && data.currentSubjects is list && data.currentSubjects.size() >= 1 && data.currentSubjects.size() <= 15
+      && data.currentSubjects[0] is string && data.currentSubjects[0].size() >= 2 && data.currentSubjects[0].size() <= 100
+      && data.careerGoal is string && data.careerGoal.size() >= 3 && data.careerGoal.size() <= 120
+      && data.knownSkills is list && data.knownSkills.size() <= 30
+      && (data.knownSkills.size() == 0 || (data.knownSkills[0] is string && data.knownSkills[0].size() <= 80))
+      && data.weeklyStudyHours is number && data.weeklyStudyHours >= 1 && data.weeklyStudyHours <= 60
+      && data.preferredLearningMethod is string && data.preferredLearningMethod.size() >= 3 && data.preferredLearningMethod.size() <= 80
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    function isValidSemesterRecord(data) {
+      return data.keys().hasAll([
+        'semesterId',
+        'userId',
+        'semesterName',
+        'academicYear',
+        'branch',
+        'careerGoal',
+        'weeklyStudyHours',
+        'preferredLearningMethod',
+        'subjects',
+        'status',
+        'progressPercent',
+        'subjectBridges',
+        'monthlyPlans',
+        'weeklyPlans',
+        'skills',
+        'projects',
+        'opportunities',
+        'placementTasks',
+        'createdAt',
+        'updatedAt'
+      ])
+      && data.keys().hasOnly([
+        'semesterId',
+        'userId',
+        'semesterName',
+        'academicYear',
+        'branch',
+        'careerGoal',
+        'weeklyStudyHours',
+        'preferredLearningMethod',
+        'subjects',
+        'status',
+        'progressPercent',
+        'subjectBridges',
+        'monthlyPlans',
+        'weeklyPlans',
+        'skills',
+        'projects',
+        'opportunities',
+        'placementTasks',
+        'createdAt',
+        'updatedAt'
+      ])
+      && isValidId(data.semesterId)
+      && data.semesterId.size() >= 5 && data.semesterId.size() <= 32
+      && isValidId(data.userId)
+      && data.userId == request.auth.uid
+      && data.semesterName is string && data.semesterName in [
+        'Semester 1', 'Semester 2', 'Semester 3', 'Semester 4',
+        'Semester 5', 'Semester 6', 'Semester 7', 'Semester 8'
+      ]
+      && data.academicYear is string && data.academicYear in ['1st Year', '2nd Year', '3rd Year', '4th Year']
+      && data.branch is string && data.branch.size() >= 2 && data.branch.size() <= 30
+      && data.careerGoal is string && data.careerGoal.size() >= 3 && data.careerGoal.size() <= 120
+      && data.weeklyStudyHours is number && data.weeklyStudyHours >= 1 && data.weeklyStudyHours <= 60
+      && data.preferredLearningMethod is string && data.preferredLearningMethod.size() >= 3 && data.preferredLearningMethod.size() <= 80
+      && data.subjects is list && data.subjects.size() >= 1 && data.subjects.size() <= 15
+      && data.subjects[0] is string && data.subjects[0].size() >= 2 && data.subjects[0].size() <= 100
+      && data.status is string && data.status in ['active', 'completed']
+      && data.progressPercent is number && data.progressPercent >= 0 && data.progressPercent <= 100
+      && data.subjectBridges is list && data.subjectBridges.size() <= 15
+      && (data.subjectBridges.size() == 0 || data.subjectBridges[0] is map)
+      && data.monthlyPlans is list && data.monthlyPlans.size() <= 6
+      && (data.monthlyPlans.size() == 0 || data.monthlyPlans[0] is map)
+      && data.weeklyPlans is list && data.weeklyPlans.size() <= 20
+      && (data.weeklyPlans.size() == 0 || data.weeklyPlans[0] is map)
+      && data.skills is list && data.skills.size() <= 30
+      && (data.skills.size() == 0 || data.skills[0] is map)
+      && data.projects is list && data.projects.size() <= 10
+      && (data.projects.size() == 0 || data.projects[0] is map)
+      && data.opportunities is list && data.opportunities.size() <= 15
+      && (data.opportunities.size() == 0 || data.opportunities[0] is map)
+      && data.placementTasks is list && data.placementTasks.size() <= 20
+      && (data.placementTasks.size() == 0 || data.placementTasks[0] is map)
+      && data.createdAt is timestamp
+      && data.updatedAt is timestamp;
+    }
+
+    // =========================================================================
+    // 4. COLLECTION: /users/{userId}
+    // =========================================================================
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update Profile Details or Active Semester Pointer
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'fullName',
+            'branch',
+            'customBranchName',
+            'currentYear',
+            'currentSemester',
+            'currentSubjects',
+            'careerGoal',
+            'knownSkills',
+            'weeklyStudyHours',
+            'preferredLearningMethod',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // =======================================================================
+      // 5. SUBCOLLECTION: /users/{userId}/semesters/{semesterId}
+      // =======================================================================
+      match /semesters/{semesterId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(semesterId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.userId == request.auth.uid;
+
+        // Secure List Query Enforcer: No get()/exists() in list to prevent O(n) cost explosion;
+        // strictly verifies resource.data.userId == request.auth.uid
+        allow list: if isOwner(userId)
+          && resource.data.userId == request.auth.uid;
+
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(semesterId)
+          && isValidSemesterRecord(incoming())
+          && incoming().semesterId == semesterId
+          && incoming().userId == userId
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.userId == request.auth.uid;
+
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(semesterId)
+          && isValidSemesterRecord(incoming())
+          && incoming().semesterId == existing().semesterId
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && existing().status != 'completed'
+          && (
+            // Action 1: Update Progress, Tasks, Skills, Projects, Opportunities, or Mark Complete
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'semesterName',
+              'academicYear',
+              'branch',
+              'careerGoal',
+              'weeklyStudyHours',
+              'preferredLearningMethod',
+              'subjects',
+              'status',
+              'progressPercent',
+              'subjectBridges',
+              'monthlyPlans',
+              'weeklyPlans',
+              'skills',
+              'projects',
+              'opportunities',
+              'placementTasks',
+              'updatedAt'
+            ])
+          )
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.userId == request.auth.uid;
+
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(semesterId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.userId == request.auth.uid;
+      }
+    }
+  }
+}

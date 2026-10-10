@@ -1,170 +1,536 @@
 /**
  * ============================================================================
  * FILE: src/App.tsx
- * PURPOSE: Root application component that coordinates navigation and holds
- *          the student's onboarding profile state.
+ * PURPOSE: Root application component that coordinates authentication,
+ *          persistent storage (Cloud Firestore + Local Browser Account fallback),
+ *          onboarding form reset, profile editing, and semester management.
  *
  * BEGINNER CONCEPTS EXPLAINED IN THIS FILE:
- * 1. Top-Level State Management ("Lifting State Up"):
- *    Why do we store `studentProfile` here in `App.tsx` instead of inside
- *    `OnboardingForm.tsx`? Because both `OnboardingForm` (which writes the data)
- *    and `Dashboard` (which reads and displays the data) need access to it!
- *    In React, when two sibling components share data, we "lift the state up"
- *    to their closest common parent (`App.tsx`) and pass it down via props.
+ * 1. Why the Onboarding Form Previously Retained Values (And How We Fixed It):
+ *    Previously, clicking "Build My Roadmap" and "Edit Profile" both rendered
+ *    `<OnboardingForm initialProfile={studentProfile} />`. Whenever `studentProfile`
+ *    existed, the form initialized with the saved values instead of empty fields.
+ *    NOW:
+ *    - Clicking "Build My Roadmap" calls `handleStartFreshOnboarding()`, which
+ *      increments `onboardingResetKey` and opens `<OnboardingForm mode="onboarding" />`
+ *      where all fields, dropdowns, and validation messages start 100% empty.
+ *    - Clicking "Edit Profile" opens the `My Profile` section inside `<Dashboard />`
+ *      with `isEditingProfile = true`, which loads the saved profile into the
+ *      separate edit form and only updates storage when "Save Changes" is clicked.
  *
- * 2. Temporary Local State vs. Persistent Database Storage:
- *    - In this Version 1 foundation, `studentProfile` is stored in React's
- *      in-memory `useState` and mirrored to the browser's `localStorage` under
- *      the key `'pathpilot_v1_student_profile'`.
- *    - What is the difference? Browser `localStorage` only lives on this single
- *      device and browser tab. In a future step, when we add authentication and
- *      a cloud database, the student's profile will be saved to a server so they
- *      can log in from any laptop or phone.
- *
- * 3. Defensive Error Handling (`try / catch`):
- *    Whenever we read JSON from `localStorage`, there is a chance a user or
- *    browser extension modified or corrupted the stored string, or that private
- *    browsing mode blocks storage access. Wrapping `JSON.parse` in a `try / catch`
- *    block prevents the entire app from crashing with a blank white screen.
+ * 2. Never Overwriting Saved Roadmaps on Page Refresh:
+ *    Inside `useEffect`, when the page loads or refreshes, we call
+ *    `loadStudentProfile()` and `loadAllSemesterRecords()`. If a saved profile
+ *    and semester roadmap already exist in Firestore (or local storage), we load
+ *    them directly into state without calling the roadmap generator!
  * ============================================================================
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth, signInWithGoogle, signOutUser } from './firebase';
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './components/LandingPage';
 import { OnboardingForm } from './components/OnboardingForm';
 import { Dashboard } from './components/Dashboard';
-import { StudentProfile } from './types/student';
+import {
+  AcademicSemester,
+  DashboardSectionId,
+  SemesterRecord,
+  StudentProfile,
+} from './types/student';
+import {
+  generatePersonalizedSemesterRecord,
+  getAcademicYearForSemester,
+  semesterNameToId,
+} from './utils/roadmapGenerator';
+import {
+  createNewLocalAccountId,
+  ensureSemesterRecordExists,
+  getOrInitActiveLocalUserId,
+  listLocalAccounts,
+  loadAllSemesterRecords,
+  loadStudentProfile,
+  LocalAccountSummary,
+  saveSemesterRecord,
+  saveStudentProfile,
+  setActiveLocalUserId,
+} from './services/storageService';
 
-// Key used to store the temporary Version 1 profile in the browser's localStorage
-const LOCAL_STORAGE_KEY = 'pathpilot_v1_student_profile';
-
-// Possible top-level screens in Version 1
 type AppView = 'landing' | 'onboarding' | 'dashboard';
 
 export default function App() {
-  /**
-   * 1. Student Profile State:
-   * Uses a lazy initializer function `() => { ... }` so React only reads from
-   * `localStorage` once when the app first loads, rather than on every re-render.
-   */
-  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(() => {
-    try {
-      const savedJson = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (!savedJson) {
-        return null;
-      }
-      const parsed = JSON.parse(savedJson) as StudentProfile;
-      // Basic sanity check to protect against malformed stored objects
-      if (parsed && typeof parsed.fullName === 'string' && Array.isArray(parsed.currentSubjects)) {
-        return parsed;
-      }
-      return null;
-    } catch (error) {
-      // If localStorage is blocked or corrupted, fall back safely to null
-      console.warn('Could not read saved student profile from localStorage:', error);
-      return null;
-    }
-  });
+  // 1. Authentication & Active Account Identity State
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
+  const [localUserId, setLocalUserId] = useState<string>(() =>
+    getOrInitActiveLocalUserId()
+  );
+  const [localAccounts, setLocalAccounts] = useState<LocalAccountSummary[]>(() =>
+    listLocalAccounts()
+  );
 
-  /**
-   * 2. Current View State:
-   * Controls which of the 3 primary screens is currently visible to the user:
-   * - `'landing'`: The marketing & educational landing page
-   * - `'onboarding'`: The validated student onboarding form
-   * - `'dashboard'`: The personalized student workspace with 7 module sections
-   */
+  // Determine whether we are currently using authenticated Cloud Firestore or Local Browser Mode
+  const isCloudAuthenticated = Boolean(firebaseUser && firebaseUser.emailVerified);
+  const effectiveUserId = isCloudAuthenticated && firebaseUser ? firebaseUser.uid : localUserId;
+
+  // 2. Persistent Student Profile & Semester Records State
+  const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
+  const [semesterRecords, setSemesterRecords] = useState<Record<string, SemesterRecord>>({});
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+
+  // 3. Navigation & Form Reset State
   const [currentView, setCurrentView] = useState<AppView>('landing');
+  const [activeDashboardSection, setActiveDashboardSection] =
+    useState<DashboardSectionId>('my-profile');
+  const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
 
   /**
-   * Scroll smoothly to the top of the window whenever the user switches between
-   * the Landing Page, Onboarding Form, and Dashboard.
+   * `onboardingResetKey` is incremented every time the user clicks "Build My Roadmap".
+   * Passing `key={onboardingResetKey}` to `<OnboardingForm mode="onboarding" />`
+   * forces React to mount a brand-new, completely blank form instance without
+   * touching `studentProfile` in state or storage.
    */
+  const [onboardingResetKey, setOnboardingResetKey] = useState<number>(1);
+
+  // Listen for Firebase Authentication state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setFirebaseUser(user);
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  /**
+   * Load the active student's profile and saved semester roadmaps whenever
+   * `effectiveUserId` or `isCloudAuthenticated` changes (or on initial page refresh).
+   */
+  const hydrateUserWorkspace = useCallback(async () => {
+    if (!isAuthReady) return;
+    setIsLoadingData(true);
+    setStorageError(null);
+
+    try {
+      const loadedProfile = await loadStudentProfile(effectiveUserId, isCloudAuthenticated);
+      if (!loadedProfile) {
+        setStudentProfile(null);
+        setSemesterRecords({});
+        setIsLoadingData(false);
+        return;
+      }
+
+      const loadedSemesters = await loadAllSemesterRecords(
+        effectiveUserId,
+        isCloudAuthenticated
+      );
+
+      // Ensure the current semester has a saved roadmap (loads existing without overwriting!)
+      const { records } = await ensureSemesterRecordExists(
+        loadedProfile,
+        loadedSemesters,
+        isCloudAuthenticated
+      );
+
+      setStudentProfile(loadedProfile);
+      setSemesterRecords(records);
+      setLocalAccounts(listLocalAccounts());
+
+      // If the user refreshes the page and already has a saved profile, open their Dashboard
+      setCurrentView((prevView) => (prevView === 'landing' ? 'dashboard' : prevView));
+    } catch (err) {
+      console.error('Error loading workspace data:', err);
+      setStorageError(
+        'Could not load your saved records. Please check your connection or try again.'
+      );
+    } finally {
+      setIsLoadingData(false);
+    }
+  }, [effectiveUserId, isCloudAuthenticated, isAuthReady]);
+
+  useEffect(() => {
+    hydrateUserWorkspace();
+  }, [hydrateUserWorkspace]);
+
+  // Smooth scroll to top when changing top-level views
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [currentView]);
+  }, [currentView, activeDashboardSection]);
 
   /**
-   * Event Handler: Called by `OnboardingForm` ONLY after all validation rules pass.
-   * Saves the validated profile into React state and local browser storage,
-   * then navigates directly to the personalized Dashboard.
+   * ==========================================================================
+   * HANDLER 1: Start Fresh Onboarding ("Build My Roadmap")
+   * Resets only the onboarding form inputs by incrementing `onboardingResetKey`
+   * and switching to `'onboarding'`. Does NOT delete `studentProfile`!
+   * ==========================================================================
    */
-  const handleCompleteOnboarding = (validatedProfile: StudentProfile) => {
-    setStudentProfile(validatedProfile);
+  const handleStartFreshOnboarding = () => {
+    setOnboardingResetKey((prev) => prev + 1);
+    setIsEditingProfile(false);
+    setCurrentView('onboarding');
+  };
 
-    try {
-      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(validatedProfile));
-    } catch (error) {
-      console.warn('Could not persist profile to localStorage:', error);
+  /**
+   * ==========================================================================
+   * HANDLER 2: Open Profile Editing ("Edit Profile")
+   * Opens the Dashboard's "My Profile" section with `isEditingProfile = true`,
+   * loading the student's saved details into the edit form.
+   * ==========================================================================
+   */
+  const handleOpenEditProfile = () => {
+    if (!studentProfile) {
+      handleStartFreshOnboarding();
+      return;
     }
-
+    setActiveDashboardSection('my-profile');
+    setIsEditingProfile(true);
     setCurrentView('dashboard');
   };
 
   /**
-   * Event Handler: Clears the temporary local profile and returns to the Landing Page
-   * so the user can test onboarding from a completely fresh state.
+   * ==========================================================================
+   * HANDLER 3: Complete Fresh Onboarding Submission
+   * Saves the student profile and generates/loads their initial semester roadmap.
+   * ==========================================================================
    */
-  const handleResetProfile = () => {
-    setStudentProfile(null);
+  const handleCompleteOnboarding = async (
+    newProfile: StudentProfile,
+    replaceRoadmapConfirmed: boolean
+  ) => {
+    setIsSaving(true);
+    setStorageError(null);
+
     try {
-      window.localStorage.removeItem(LOCAL_STORAGE_KEY);
-    } catch (error) {
-      console.warn('Could not clear profile from localStorage:', error);
+      const profileWithUser: StudentProfile = {
+        ...newProfile,
+        userId: effectiveUserId,
+      };
+
+      const savedProfile = await saveStudentProfile(
+        profileWithUser,
+        isCloudAuthenticated
+      );
+
+      const targetSemId = semesterNameToId(savedProfile.currentSemester);
+      let nextRecords = { ...semesterRecords };
+
+      // Generate a new roadmap only if one doesn't exist for this semester OR user confirmed replacement
+      if (!nextRecords[targetSemId] || replaceRoadmapConfirmed) {
+        const generatedRecord = generatePersonalizedSemesterRecord(savedProfile);
+        const savedRecord = await saveSemesterRecord(
+          generatedRecord,
+          isCloudAuthenticated
+        );
+        nextRecords = {
+          ...nextRecords,
+          [targetSemId]: savedRecord,
+        };
+      }
+
+      setStudentProfile(savedProfile);
+      setSemesterRecords(nextRecords);
+      setLocalAccounts(listLocalAccounts());
+      setActiveDashboardSection('my-roadmap');
+      setIsEditingProfile(false);
+      setCurrentView('dashboard');
+    } catch (err) {
+      console.error('Failed to save onboarding data:', err);
+      setStorageError('Failed to save your onboarding profile. Please try again.');
+    } finally {
+      setIsSaving(false);
     }
-    setCurrentView('landing');
+  };
+
+  /**
+   * ==========================================================================
+   * HANDLER 4: Save Profile Edits from "My Profile"
+   * Updates the saved student profile WITHOUT overwriting existing semester
+   * roadmaps or progress! If the user switched to a semester that doesn't have
+   * a roadmap yet, initializes that semester's record while keeping past ones.
+   * ==========================================================================
+   */
+  const handleSaveProfileEdits = async (updatedProfile: StudentProfile) => {
+    setIsSaving(true);
+    setStorageError(null);
+
+    try {
+      const savedProfile = await saveStudentProfile(
+        updatedProfile,
+        isCloudAuthenticated
+      );
+
+      const { records } = await ensureSemesterRecordExists(
+        savedProfile,
+        semesterRecords,
+        isCloudAuthenticated
+      );
+
+      setStudentProfile(savedProfile);
+      setSemesterRecords(records);
+      setLocalAccounts(listLocalAccounts());
+    } catch (err) {
+      console.error('Failed to update profile:', err);
+      setStorageError('Failed to save profile changes. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /**
+   * ==========================================================================
+   * HANDLER 5: Update a Semester Record (Tasks, Skills, Projects, Opportunities)
+   * ==========================================================================
+   */
+  const handleUpdateSemesterRecord = async (updatedRecord: SemesterRecord) => {
+    setIsSaving(true);
+    setStorageError(null);
+    try {
+      const saved = await saveSemesterRecord(updatedRecord, isCloudAuthenticated);
+      setSemesterRecords((prev) => ({
+        ...prev,
+        [saved.semesterId]: saved,
+      }));
+    } catch (err) {
+      console.error('Failed to save semester progress:', err);
+      setStorageError('Could not save your latest progress update.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /**
+   * ==========================================================================
+   * HANDLER 6: Explicitly Regenerate a Semester Roadmap (After User Confirmation)
+   * ==========================================================================
+   */
+  const handleRegenerateSemesterRoadmap = async (
+    semesterName: AcademicSemester,
+    subjects: string[]
+  ) => {
+    if (!studentProfile) return;
+    setIsSaving(true);
+    setStorageError(null);
+    try {
+      const regenerated = generatePersonalizedSemesterRecord(
+        studentProfile,
+        semesterName,
+        subjects
+      );
+      const saved = await saveSemesterRecord(regenerated, isCloudAuthenticated);
+      setSemesterRecords((prev) => ({
+        ...prev,
+        [saved.semesterId]: saved,
+      }));
+    } catch (err) {
+      console.error('Failed to regenerate roadmap:', err);
+      setStorageError('Could not regenerate the semester roadmap.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /**
+   * ==========================================================================
+   * HANDLER 7: Start a New Semester (Without Deleting Previous Semesters)
+   * ==========================================================================
+   */
+  const handleStartNewSemester = async (
+    newSemesterName: AcademicSemester,
+    newSubjects: string[]
+  ) => {
+    if (!studentProfile) return;
+    setIsSaving(true);
+    setStorageError(null);
+
+    try {
+      const newYear = getAcademicYearForSemester(newSemesterName);
+      const updatedProfile: StudentProfile = {
+        ...studentProfile,
+        currentYear: newYear,
+        currentSemester: newSemesterName,
+        currentSubjects: newSubjects,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const savedProfile = await saveStudentProfile(
+        updatedProfile,
+        isCloudAuthenticated
+      );
+
+      const semId = semesterNameToId(newSemesterName);
+      let nextRecords = { ...semesterRecords };
+
+      // Only generate if this new semester doesn't already have a saved record
+      if (!nextRecords[semId]) {
+        const generated = generatePersonalizedSemesterRecord(
+          savedProfile,
+          newSemesterName,
+          newSubjects
+        );
+        const savedSem = await saveSemesterRecord(generated, isCloudAuthenticated);
+        nextRecords = {
+          ...nextRecords,
+          [semId]: savedSem,
+        };
+      }
+
+      setStudentProfile(savedProfile);
+      setSemesterRecords(nextRecords);
+      setLocalAccounts(listLocalAccounts());
+      setActiveDashboardSection('my-roadmap');
+    } catch (err) {
+      console.error('Failed to start new semester:', err);
+      setStorageError('Could not start the new semester. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  /**
+   * ==========================================================================
+   * HANDLER 8: Google Cloud Sign-In & Local Account Switching
+   * ==========================================================================
+   */
+  const handleSignInGoogle = async () => {
+    setStorageError(null);
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      console.warn('Google Sign-In popup closed or blocked:', err);
+      setStorageError(
+        'Google Sign-In was cancelled or blocked by your browser popup settings. Your data remains safely stored in Local Browser Mode.'
+      );
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOutUser();
+      setCurrentView('landing');
+    } catch (err) {
+      console.warn('Sign out error:', err);
+    }
+  };
+
+  const handleSwitchLocalAccount = (targetUserId: string) => {
+    setActiveLocalUserId(targetUserId);
+    setLocalUserId(targetUserId);
+  };
+
+  const handleCreateNewLocalAccount = () => {
+    const newId = createNewLocalAccountId();
+    setLocalUserId(newId);
+    setStudentProfile(null);
+    setSemesterRecords({});
+    setOnboardingResetKey((prev) => prev + 1);
+    setCurrentView('onboarding');
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      {/* Top Bar Navigation shared across views */}
       <Navbar
         currentView={currentView}
         hasSavedProfile={Boolean(studentProfile)}
-        onStartOnboarding={() => setCurrentView('onboarding')}
+        isCloudAuthenticated={isCloudAuthenticated}
+        userEmail={firebaseUser?.email}
+        onStartOnboarding={handleStartFreshOnboarding}
         onOpenDashboard={() => {
           if (studentProfile) {
+            setIsEditingProfile(false);
             setCurrentView('dashboard');
           } else {
-            setCurrentView('onboarding');
+            handleStartFreshOnboarding();
           }
         }}
+        onEditProfile={handleOpenEditProfile}
         onGoHome={() => setCurrentView('landing')}
+        onSignInGoogle={handleSignInGoogle}
+        onSignOut={handleSignOut}
       />
 
-      {/* Main View Switcher */}
+      {/* Global Error Banner if a storage operation fails */}
+      {storageError && (
+        <div
+          role="alert"
+          className="bg-red-50 border-b border-red-200 px-6 py-3 text-xs font-medium text-red-800 flex items-center justify-between"
+        >
+          <span>{storageError}</span>
+          <button
+            type="button"
+            onClick={() => setStorageError(null)}
+            className="text-red-700 font-semibold hover:underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Main Content Area */}
       <div className="flex-1">
-        {currentView === 'landing' && (
-          <LandingPage
-            onBuildRoadmap={() => setCurrentView('onboarding')}
-            hasSavedProfile={Boolean(studentProfile)}
-            onResumeDashboard={() => setCurrentView('dashboard')}
-            studentName={studentProfile?.fullName}
-          />
-        )}
+        {isLoadingData ? (
+          <div className="max-w-4xl mx-auto p-10 space-y-4">
+            <div className="h-8 w-56 bg-slate-200 rounded-lg animate-pulse" />
+            <div className="h-36 w-full bg-white border border-slate-200 rounded-2xl p-6 animate-pulse" />
+          </div>
+        ) : (
+          <>
+            {currentView === 'landing' && (
+              <LandingPage
+                onBuildRoadmap={handleStartFreshOnboarding}
+                hasSavedProfile={Boolean(studentProfile)}
+                onResumeDashboard={() => {
+                  setIsEditingProfile(false);
+                  setCurrentView('dashboard');
+                }}
+                studentName={studentProfile?.fullName}
+              />
+            )}
 
-        {currentView === 'onboarding' && (
-          <OnboardingForm
-            initialProfile={studentProfile}
-            onCompleteOnboarding={handleCompleteOnboarding}
-            onCancel={() => {
-              // If the student was editing an existing profile, return to Dashboard;
-              // otherwise return to the Landing Page.
-              if (studentProfile) {
-                setCurrentView('dashboard');
-              } else {
-                setCurrentView('landing');
-              }
-            }}
-          />
-        )}
+            {currentView === 'onboarding' && (
+              <OnboardingForm
+                key={`onboarding_fresh_${onboardingResetKey}`}
+                mode="onboarding"
+                activeUserId={effectiveUserId}
+                initialProfile={studentProfile}
+                hasExistingSavedData={Boolean(studentProfile)}
+                isSaving={isSaving}
+                onSaveProfile={handleCompleteOnboarding}
+                onCancel={() => {
+                  // Leaving or cancelling onboarding NEVER overwrites existing saved data!
+                  if (studentProfile) {
+                    setCurrentView('dashboard');
+                  } else {
+                    setCurrentView('landing');
+                  }
+                }}
+              />
+            )}
 
-        {currentView === 'dashboard' && studentProfile && (
-          <Dashboard
-            profile={studentProfile}
-            onEditProfile={() => setCurrentView('onboarding')}
-            onResetProfile={handleResetProfile}
-          />
+            {currentView === 'dashboard' && studentProfile && (
+              <Dashboard
+                profile={studentProfile}
+                semesterRecords={semesterRecords}
+                activeSection={activeDashboardSection}
+                onSelectSection={setActiveDashboardSection}
+                isEditingProfile={isEditingProfile}
+                onSetEditingProfile={setIsEditingProfile}
+                isCloudAuthenticated={isCloudAuthenticated}
+                cloudUserEmail={firebaseUser?.email}
+                localAccounts={localAccounts}
+                onSwitchLocalAccount={handleSwitchLocalAccount}
+                onCreateNewLocalAccount={handleCreateNewLocalAccount}
+                onSignInGoogle={handleSignInGoogle}
+                onSignOut={handleSignOut}
+                onSaveProfileEdits={handleSaveProfileEdits}
+                onUpdateSemesterRecord={handleUpdateSemesterRecord}
+                onRegenerateSemesterRoadmap={handleRegenerateSemesterRoadmap}
+                onStartNewSemester={handleStartNewSemester}
+                isSaving={isSaving}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
