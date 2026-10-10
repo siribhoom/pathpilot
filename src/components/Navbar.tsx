@@ -47,29 +47,27 @@ export const Navbar: React.FC<NavbarProps> = ({
         {currentView === 'landing' ? (
           <>
             <a
-              href="#subject-bridge"
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              Subject Bridge
-            </a>
-            <a
               href="#how-it-works"
               className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
             >
               How It Works
             </a>
-            <a
-              href="#branches"
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
+            <button
+              type="button"
+              onClick={onStartOnboarding}
+              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
             >
-              All Branches
-            </a>
-            <a
-              href="#modules"
-              className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0"
-            >
-              7 Modules
-            </a>
+              Onboarding Form
+            </button>
+            {hasSavedProfile && (
+              <button
+                type="button"
+                onClick={onOpenDashboard}
+                className="hover:text-slate-900 hover:underline underline-offset-4 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                My Dashboard
+              </button>
+            )}
           </>
         ) : (
           <>
