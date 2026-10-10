@@ -1,0 +1,6 @@
+{
+  "name": "PathPilot — Your BTech Journey, Planned Smartly",
+  "description": "Connect BTech classroom subjects to real-world engineering applications, skills, projects, and year-by-year placement preparation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
