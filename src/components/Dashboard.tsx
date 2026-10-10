@@ -1,14 +1,13 @@
 /**
  * ============================================================================
  * FILE: src/components/Dashboard.tsx
- * PURPOSE: Renders the personalized student workspace organized into the 6
- *          required sections:
+ * PURPOSE: Renders the personalized student workspace organized into the 5
+ *          functional sections:
  *          1. My Profile
  *          2. My Roadmap
- *          3. My Skills
- *          4. My Projects
- *          5. My Opportunities
- *          6. My Progress
+ *          3. My Projects
+ *          4. My Opportunities
+ *          5. My Progress
  *
  * BEGINNER CONCEPTS EXPLAINED IN THIS FILE:
  * 1. Semester-Wise Data Organization:
@@ -198,8 +197,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return <UserCheck className="w-4 h-4 shrink-0" />;
       case 'my-roadmap':
         return <Compass className="w-4 h-4 shrink-0" />;
-      case 'my-skills':
-        return <Code2 className="w-4 h-4 shrink-0" />;
       case 'my-projects':
         return <FolderGit2 className="w-4 h-4 shrink-0" />;
       case 'my-opportunities':
@@ -489,11 +486,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   key={section.id}
                   type="button"
                   onClick={() => {
-                    if (section.id === 'my-profile') {
-                      onSetEditingProfile(true);
-                    } else {
-                      onSetEditingProfile(false);
-                    }
+                    onSetEditingProfile(false);
                     onSelectSection(section.id);
                   }}
                   className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium rounded-xl transition-colors cursor-pointer text-left ${
@@ -1026,7 +1019,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             Displays the saved Roadmap Overview, Three-Month Plan, Subject-to-
             Real-World Bridges, Monthly Learning Plans, and Weekly Learning Plans.
             =================================================================== */}
-        {activeSection === 'my-roadmap' && currentRecord && (
+        {activeSection === 'my-roadmap' && (!currentRecord ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 text-center space-y-3">
+            <Compass className="w-8 h-8 text-blue-700 mx-auto" />
+            <h3 className="text-base font-bold text-slate-900">No Roadmap Record Available</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Complete onboarding or start a semester to generate your personalized learning roadmap.
+            </p>
+          </div>
+        ) : (
           <div className="space-y-8">
             {/* Section Header + Explicit Revise Roadmap Button */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1403,187 +1404,248 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 ))}
               </div>
             </div>
-          </div>
-        )}
 
-        {/* ===================================================================
-            SECTION 3: MY SKILLS (`my-skills`)
-            Displays saved skills & learning resources for the viewed semester,
-            including student's known skills, recommended skills, resources, and
-            practice tasks.
-            =================================================================== */}
-        {activeSection === 'my-skills' && currentRecord && (() => {
-          const knownSkillsCount = currentRecord.skills.filter((s) => s.category === 'Baseline Known').length;
-          const recommendedSkillsCount = currentRecord.skills.filter((s) => s.category !== 'Baseline Known').length;
-          const inProgressSkillsCount = currentRecord.skills.filter((s) => s.status === 'in-progress').length;
-          const masteredSkillsCount = currentRecord.skills.filter((s) => s.status === 'mastered').length;
+            {/* Part D: Skills Roadmap & Verified Learning Resources */}
+            {(() => {
+              const knownSkillsCount = currentRecord.skills.filter((s) => s.category === 'Baseline Known').length;
+              const recommendedSkillsCount = currentRecord.skills.filter((s) => s.category !== 'Baseline Known').length;
+              const inProgressSkillsCount = currentRecord.skills.filter((s) => s.status === 'in-progress').length;
+              const masteredSkillsCount = currentRecord.skills.filter((s) => s.status === 'mastered').length;
 
-          const filteredSkills = currentRecord.skills.filter((s) => {
-            if (skillFilter === 'known') return s.category === 'Baseline Known';
-            if (skillFilter === 'recommended') return s.category !== 'Baseline Known';
-            if (skillFilter === 'in-progress') return s.status === 'in-progress';
-            if (skillFilter === 'mastered') return s.status === 'mastered';
-            return true;
-          });
+              const filteredSkills = currentRecord.skills.filter((s) => {
+                if (skillFilter === 'known') return s.category === 'Baseline Known';
+                if (skillFilter === 'recommended') return s.category !== 'Baseline Known';
+                if (skillFilter === 'in-progress') return s.status === 'in-progress';
+                if (skillFilter === 'mastered') return s.status === 'mastered';
+                return true;
+              });
 
-          return (
-            <div className="space-y-6">
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
-                  <div>
-                    <p className="text-xs font-semibold text-blue-700">
-                      03. My Skills · {currentRecord.semesterName}
-                    </p>
-                    <h2 className="text-xl font-bold text-slate-900 mt-0.5">
-                      Skills Roadmap & Verified Learning Resources
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Update your proficiency status yourself. Skills in the roadmap start as Planned or In Progress and are only marked Mastered when you confirm them.
-                    </p>
+              return (
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Code2 className="w-4 h-4 text-blue-700" />
+                        <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                          Target Skills Roadmap & Verified Resources
+                        </span>
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900 mt-1">
+                        Technical Skills to Learn for {currentRecord.semesterName}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Categorized by baseline foundation, subject-linked core, and career target skills. Click official docs to study, or update your proficiency status as you learn.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-600 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200 shrink-0">
+                      <span className="font-bold text-emerald-700">{masteredSkillsCount}</span> /{' '}
+                      <span>{currentRecord.skills.length} Mastered</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs font-mono tabular-nums text-slate-600 bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200">
-                    <span className="font-bold text-emerald-700">{masteredSkillsCount}</span> /{' '}
-                    <span>{currentRecord.skills.length} Mastered</span>
-                  </div>
-                </div>
 
-                {/* Filter Tabs */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {(
-                    [
-                      { id: 'all', label: `All Skills (${currentRecord.skills.length})` },
-                      { id: 'known', label: `Known Foundation (${knownSkillsCount})` },
-                      { id: 'recommended', label: `Recommended by Roadmap (${recommendedSkillsCount})` },
-                      { id: 'in-progress', label: `In Progress (${inProgressSkillsCount})` },
-                      { id: 'mastered', label: `Mastered (${masteredSkillsCount})` },
-                    ] as const
-                  ).map((tab) => {
-                    const isSelected = skillFilter === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setSkillFilter(tab.id)}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-blue-700 text-white border-blue-700'
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                        }`}
+                  {/* Filter Tabs */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(
+                      [
+                        { id: 'all', label: `All Skills (${currentRecord.skills.length})` },
+                        { id: 'known', label: `Known Foundation (${knownSkillsCount})` },
+                        { id: 'recommended', label: `Recommended by Roadmap (${recommendedSkillsCount})` },
+                        { id: 'in-progress', label: `In Progress (${inProgressSkillsCount})` },
+                        { id: 'mastered', label: `Mastered (${masteredSkillsCount})` },
+                      ] as const
+                    ).map((tab) => {
+                      const isSelected = skillFilter === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setSkillFilter(tab.id)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-700 text-white border-blue-700'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Skills Cards Grid */}
+                  <div className="space-y-4">
+                    {filteredSkills.map((skill) => (
+                      <div
+                        key={skill.id}
+                        className="p-5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-5"
                       >
-                        {tab.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Skills Cards Grid */}
-                <div className="space-y-4">
-                  {filteredSkills.map((skill) => (
-                    <div
-                      key={skill.id}
-                      className="p-5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-5"
-                    >
-                      <div className="space-y-2.5 max-w-2xl">
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span
-                            className={`px-2 py-0.5 rounded-md font-semibold text-[11px] ${
-                              skill.category === 'Baseline Known'
-                                ? 'bg-slate-200 text-slate-800'
-                                : skill.category === 'Subject-Linked Core'
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-purple-100 text-purple-800'
-                            }`}
-                          >
-                            {skill.category}
-                          </span>
-
-                          {skill.level && (
-                            <span className="px-2 py-0.5 rounded-md font-mono text-[11px] bg-white border border-slate-300 text-slate-700">
-                              {skill.level}
-                            </span>
-                          )}
-
-                          <span className="text-slate-500">· Linked: {skill.linkedSubject}</span>
-                          <span className="text-slate-500">· ~{skill.estimatedHours} hrs</span>
-                        </div>
-
-                        <h3 className="text-base font-bold text-slate-900">
-                          {skill.skillName}
-                        </h3>
-
-                        {/* Learning Resource with Legitimate Link */}
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
-                          <BookOpen className="w-3.5 h-3.5 text-blue-700 shrink-0" />
-                          <span>Resource: <strong>{skill.resourceTitle}</strong></span>
-                          {skill.resourceLink && (
-                            <a
-                              href={skill.resourceLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
+                        <div className="space-y-2.5 max-w-2xl">
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span
+                              className={`px-2 py-0.5 rounded-md font-semibold text-[11px] ${
+                                skill.category === 'Baseline Known'
+                                  ? 'bg-slate-200 text-slate-800'
+                                  : skill.category === 'Subject-Linked Core'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-purple-100 text-purple-800'
+                              }`}
                             >
-                              <span>Official Docs</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </a>
+                              {skill.category}
+                            </span>
+
+                            {skill.level && (
+                              <span className="px-2 py-0.5 rounded-md font-mono text-[11px] bg-white border border-slate-300 text-slate-700">
+                                {skill.level}
+                              </span>
+                            )}
+
+                            <span className="text-slate-500">· Linked: {skill.linkedSubject}</span>
+                            <span className="text-slate-500">· ~{skill.estimatedHours} hrs</span>
+                          </div>
+
+                          <h3 className="text-base font-bold text-slate-900">
+                            {skill.skillName}
+                          </h3>
+
+                          {/* Learning Resource with Legitimate Link */}
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                            <BookOpen className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                            <span>Resource: <strong>{skill.resourceTitle}</strong></span>
+                            {skill.resourceLink && (
+                              <a
+                                href={skill.resourceLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"
+                              >
+                                <span>Official Docs</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+
+                          {/* Practical Practice Task */}
+                          {skill.practiceTask && (
+                            <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-0.5">
+                              <span className="font-semibold text-slate-700">Practice Task: </span>
+                              <span className="text-slate-600">{skill.practiceTask}</span>
+                            </div>
                           )}
                         </div>
 
-                        {/* Practical Practice Task */}
-                        {skill.practiceTask && (
-                          <div className="p-2.5 rounded-lg bg-white border border-slate-200/80 text-xs space-y-0.5">
-                            <span className="font-semibold text-slate-700">Practice Task: </span>
-                            <span className="text-slate-600">{skill.practiceTask}</span>
-                          </div>
+                        {/* Interactive Status Segmented Control */}
+                        <div className="flex items-center gap-1.5 p-1 bg-white border border-slate-200 rounded-xl shrink-0 self-start md:self-center">
+                          {(['planned', 'in-progress', 'mastered'] as const).map((statusOption) => {
+                            const active = skill.status === statusOption;
+                            return (
+                              <button
+                                key={statusOption}
+                                type="button"
+                                disabled={isViewingCompletedSemester}
+                                onClick={() => handleChangeSkillStatus(skill.id, statusOption)}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer capitalize whitespace-nowrap ${
+                                  active
+                                    ? statusOption === 'mastered'
+                                      ? 'bg-emerald-700 text-white'
+                                      : 'bg-blue-700 text-white'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                } disabled:opacity-50`}
+                              >
+                                {statusOption.replace('-', ' ')}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+
+                    {filteredSkills.length === 0 && (
+                      <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                        No skills match the selected filter. Try switching to "All Skills".
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Part E: Suitable Semester Projects Preview */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <FolderGit2 className="w-4 h-4 text-blue-700" />
+                    <span className="text-xs font-semibold text-blue-700 uppercase tracking-wider">
+                      Suitable Semester Projects
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900 mt-1">
+                    Projects Progressive with Your Roadmap
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Reinforce classroom theory with real industry-standard software and hardware deliverables.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelectSection('my-projects')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-xl hover:bg-blue-100 transition-colors cursor-pointer shrink-0"
+                >
+                  <span>Open Full Projects Workspace</span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {currentRecord.projects.map((proj, pIdx) => (
+                  <div key={proj.id} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-mono text-blue-700 font-semibold">PROJECT 0{pIdx + 1}</span>
+                        {proj.difficulty && (
+                          <span className="px-2 py-0.5 rounded font-mono text-[10px] font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                            {proj.difficulty}
+                          </span>
                         )}
                       </div>
-
-                      {/* Interactive Status Segmented Control */}
-                      <div className="flex items-center gap-1.5 p-1 bg-white border border-slate-200 rounded-xl shrink-0 self-start md:self-center">
-                        {(['planned', 'in-progress', 'mastered'] as const).map((statusOption) => {
-                          const active = skill.status === statusOption;
-                          return (
-                            <button
-                              key={statusOption}
-                              type="button"
-                              disabled={isViewingCompletedSemester}
-                              onClick={() => handleChangeSkillStatus(skill.id, statusOption)}
-                              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors cursor-pointer capitalize whitespace-nowrap ${
-                                active
-                                  ? statusOption === 'mastered'
-                                    ? 'bg-emerald-700 text-white'
-                                    : 'bg-blue-700 text-white'
-                                  : 'text-slate-600 hover:text-slate-900'
-                              } disabled:opacity-50`}
-                            >
-                              {statusOption.replace('-', ' ')}
-                            </button>
-                          );
-                        })}
+                      <h4 className="text-sm font-bold text-slate-900">{proj.title}</h4>
+                      <p className="text-xs text-slate-600 line-clamp-2">{proj.problemStatement}</p>
+                      <div className="flex flex-wrap gap-1 text-[11px] pt-1">
+                        <span className="text-slate-500">Required Skills:</span>
+                        <span className="font-medium text-slate-800">{proj.targetSkill}</span>
                       </div>
                     </div>
-                  ))}
-
-                  {filteredSkills.length === 0 && (
-                    <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
-                      No skills match the selected filter. Try switching to "All Skills".
+                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
+                      <span className="text-slate-500">
+                        Milestones: {proj.milestones.filter((m) => m.completed).length}/{proj.milestones.length}
+                      </span>
+                      <span className="font-bold font-mono text-blue-700">{proj.progressPercent}%</span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                ))}
               </div>
             </div>
-          );
-        })()}
+          </div>
+        ))}
 
         {/* ===================================================================
-            SECTION 4: MY PROJECTS (`my-projects`)
+            SECTION 3: MY PROJECTS (`my-projects`)
             Displays saved semester projects and their interactive milestones.
             =================================================================== */}
-        {activeSection === 'my-projects' && currentRecord && (
+        {activeSection === 'my-projects' && (!currentRecord ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 text-center space-y-3">
+            <FolderGit2 className="w-8 h-8 text-blue-700 mx-auto" />
+            <h3 className="text-base font-bold text-slate-900">No Projects Record Available</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Complete onboarding or start a semester to generate projects tailored to your syllabus.
+            </p>
+          </div>
+        ) : (
           <div className="space-y-6">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
               <div className="border-b border-slate-100 pb-5">
                 <p className="text-xs font-semibold text-blue-700">
-                  04. My Projects · {currentRecord.semesterName}
+                  03. My Projects · {currentRecord.semesterName}
                 </p>
                 <h2 className="text-xl font-bold text-slate-900 mt-0.5">
                   Subject-Integrated Engineering Projects
@@ -1715,16 +1777,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                   </div>
                 ))}
+
+                {currentRecord.projects.length === 0 && (
+                  <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                    No engineering projects recorded for this semester yet. Click "Revise My Roadmap" in My Roadmap to generate curated projects.
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        )}
+        ))}
 
         {/* ===================================================================
-            SECTION 5: MY OPPORTUNITIES (`my-opportunities`)
+            SECTION 4: MY OPPORTUNITIES (`my-opportunities`)
             Displays saved Internships, Hackathons, and Placement Prep Tasks.
             =================================================================== */}
-        {activeSection === 'my-opportunities' && currentRecord && (() => {
+        {activeSection === 'my-opportunities' && (!currentRecord ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 text-center space-y-3">
+            <Briefcase className="w-8 h-8 text-blue-700 mx-auto" />
+            <h3 className="text-base font-bold text-slate-900">No Opportunities Available</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Complete onboarding or start a semester to explore opportunities matched to your profile.
+            </p>
+          </div>
+        ) : (() => {
           const internshipCount = currentRecord.opportunities.filter((o) => o.type === 'Internship').length;
           const hackathonCount = currentRecord.opportunities.filter((o) => o.type === 'Hackathon').length;
           const researchCount = currentRecord.opportunities.filter((o) => o.type === 'Research / Open-Source').length;
@@ -1740,7 +1816,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
                 <div className="border-b border-slate-100 pb-5">
                   <p className="text-xs font-semibold text-blue-700">
-                    05. My Opportunities · {currentRecord.semesterName} ({currentRecord.academicYear})
+                    04. My Opportunities · {currentRecord.semesterName} ({currentRecord.academicYear})
                   </p>
                   <h2 className="text-xl font-bold text-slate-900 mt-0.5">
                     Internships, Hackathons & Technical Fellowships
@@ -1908,19 +1984,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
         );
-      })()}
+      })())}
 
         {/* ===================================================================
-            SECTION 6: MY PROGRESS (`my-progress`)
+            SECTION 5: MY PROGRESS (`my-progress`)
             Displays semester completion metrics and Adaptive Timetable Rearranger.
             =================================================================== */}
-        {activeSection === 'my-progress' && currentRecord && (
+        {activeSection === 'my-progress' && (!currentRecord ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 text-center space-y-3">
+            <CalendarClock className="w-8 h-8 text-blue-700 mx-auto" />
+            <h3 className="text-base font-bold text-slate-900">No Progress Record Available</h3>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Complete onboarding or start a semester to view completion metrics and timetables.
+            </p>
+          </div>
+        ) : (
           <div className="space-y-8">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
                 <div>
                   <p className="text-xs font-semibold text-blue-700">
-                    06. My Progress · {currentRecord.semesterName}
+                    05. My Progress · {currentRecord.semesterName}
                   </p>
                   <h2 className="text-xl font-bold text-slate-900 mt-0.5">
                     Semester Completion & Adaptive Timetable
@@ -2045,11 +2129,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         Rearrange Missed Week 0{week.weekNumber} ({week.subjectLinked})
                       </button>
                     ))}
+
+                  {currentRecord.weeklyPlans.filter((w) => !w.isCompleted).length === 0 && (
+                    <p className="text-xs text-slate-500 italic">
+                      All study weeks are completed! No timetable redistribution needed.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           </div>
-        )}
+        ))}
       </main>
 
       {/* =====================================================================

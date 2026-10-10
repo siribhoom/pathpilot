@@ -233,18 +233,16 @@ export interface SemesterRecord {
 }
 
 /**
- * Identifiers for the 6 separated Dashboard sections requested in Requirement 5:
- * - My Profile
- * - My Roadmap
- * - My Skills
- * - My Projects
- * - My Opportunities
- * - My Progress
+ * Identifiers for the 5 separated Dashboard sections:
+ * 1. My Profile
+ * 2. My Roadmap
+ * 3. My Projects
+ * 4. My Opportunities
+ * 5. My Progress
  */
 export type DashboardSectionId =
   | 'my-profile'
   | 'my-roadmap'
-  | 'my-skills'
   | 'my-projects'
   | 'my-opportunities'
   | 'my-progress';
@@ -267,29 +265,23 @@ export const DASHBOARD_NAVIGATION_SECTIONS: DashboardSectionNavMeta[] = [
     id: 'my-roadmap',
     number: '02',
     title: 'My Roadmap',
-    description: 'Semester-wise Subject-to-Real-World bridges, monthly milestones, and weekly study plan.',
-  },
-  {
-    id: 'my-skills',
-    number: '03',
-    title: 'My Skills',
-    description: 'Baseline known skills, target engineering skills, and learning resources matched to your study preference.',
+    description: 'Personalized step-by-step learning roadmap, target skills, subject-to-real-world bridges, and study schedules.',
   },
   {
     id: 'my-projects',
-    number: '04',
+    number: '03',
     title: 'My Projects',
     description: 'Portfolio projects connecting your current semester subjects to your target career field.',
   },
   {
     id: 'my-opportunities',
-    number: '05',
+    number: '04',
     title: 'My Opportunities',
     description: 'Year-matched internships, hackathons, technical competitions, and placement preparation tasks.',
   },
   {
     id: 'my-progress',
-    number: '06',
+    number: '05',
     title: 'My Progress',
     description: 'Completion analytics, milestone tracker, and adaptive timetable rearrangement for missed weeks.',
   },
