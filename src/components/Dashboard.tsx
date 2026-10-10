@@ -27,6 +27,8 @@
 
 import React, { useState, useEffect } from 'react';
 import {
+  ArrowLeft,
+  ArrowRight,
   Award,
   BookOpen,
   Briefcase,
@@ -75,8 +77,8 @@ import { OnboardingForm } from './OnboardingForm';
 interface DashboardProps {
   profile: StudentProfile;
   semesterRecords: Record<string, SemesterRecord>;
-  activeSection: DashboardSectionId;
-  onSelectSection: (section: DashboardSectionId) => void;
+  activeSection: DashboardSectionId | null;
+  onSelectSection: (section: DashboardSectionId | null) => void;
   isEditingProfile: boolean;
   onSetEditingProfile: (editing: boolean) => void;
   isCloudAuthenticated: boolean;
@@ -191,18 +193,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
       ? `${profile.customBranchName} (Other)`
       : profile.branch;
 
-  const getSectionIcon = (id: DashboardSectionId) => {
+  const getSectionIcon = (id: DashboardSectionId, className = 'w-4 h-4 shrink-0') => {
     switch (id) {
       case 'my-profile':
-        return <UserCheck className="w-4 h-4 shrink-0" />;
+        return <UserCheck className={className} />;
       case 'my-roadmap':
-        return <Compass className="w-4 h-4 shrink-0" />;
+        return <Compass className={className} />;
       case 'my-projects':
-        return <FolderGit2 className="w-4 h-4 shrink-0" />;
+        return <FolderGit2 className={className} />;
       case 'my-opportunities':
-        return <Briefcase className="w-4 h-4 shrink-0" />;
+        return <Briefcase className={className} />;
       case 'my-progress':
-        return <CalendarClock className="w-4 h-4 shrink-0" />;
+        return <CalendarClock className={className} />;
     }
   };
 
@@ -417,137 +419,122 @@ export const Dashboard: React.FC<DashboardProps> = ({
       .map((p) => ({ ...p, semesterName: s.semesterName }))
   );
 
-  return (
-    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
-      {/* =====================================================================
-          LEFT SIDEBAR NAVIGATION
-          Displays the 6 separated sections:
-          My Profile, My Roadmap, My Skills, My Projects, My Opportunities, My Progress
-          ===================================================================== */}
-      <aside className="w-full lg:w-72 bg-white border-b lg:border-b-0 lg:border-r border-slate-200 shrink-0 flex flex-col justify-between">
-        <div className="p-4 sm:p-6 space-y-5">
-          {/* Active Student Summary */}
-          <div className="pb-4 border-b border-slate-100">
-            <p className="text-xs font-medium text-slate-500">Student Workspace</p>
-            <p className="text-sm font-bold text-slate-900 truncate mt-0.5">
-              {profile.fullName}
-            </p>
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600 mt-1">
-              <span className="font-mono font-semibold text-blue-700">{displayBranch}</span>
-              <span aria-hidden="true">·</span>
-              <span>{profile.currentYear}</span>
-              <span aria-hidden="true">·</span>
-              <span>{profile.currentSemester}</span>
-            </div>
-          </div>
-
-          {/* Semester Switcher Dropdown (View Current or Revisit Previous Semesters) */}
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-800">Viewed Semester</span>
-              <span className="font-mono tabular-nums text-slate-500">
-                {sortedSemesters.length} saved
-              </span>
-            </div>
-            <select
-              aria-label="Select Viewed Semester"
-              value={currentRecord?.semesterId || ''}
-              onChange={(e) => setViewedSemesterId(e.target.value)}
-              className="w-full px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:border-blue-600"
-            >
-              {sortedSemesters.map((sem) => (
-                <option key={sem.semesterId} value={sem.semesterId}>
-                  {sem.semesterName} ({sem.status === 'completed' ? 'Completed' : 'Active'} ·{' '}
-                  {sem.progressPercent}%)
-                </option>
-              ))}
-            </select>
+  /**
+   * ============================================================================
+   * DEFAULT DASHBOARD VIEW: ONLY FIVE BUTTONS
+   * When the student clicks "My Dashboard" in the top navigation, activeSection is null.
+   * As required:
+   * 1. The dashboard main content area contains ONLY these five buttons:
+   *    - My Profile
+   *    - My Roadmap
+   *    - My Projects
+   *    - My Opportunities
+   *    - My Progress
+   * 2. All other elements (Student Workspace heading, semester switcher,
+   *    Local Browser Mode banner, progress summaries, extra cards) are removed.
+   * 3. Clicking any of the five buttons displays that section's content.
+   * 4. Each opened section includes a working "Back to Dashboard" button.
+   * ============================================================================
+   */
+  if (activeSection === null) {
+    return (
+      <div className="min-h-[calc(100vh-73px)] bg-slate-50 flex items-center justify-center p-6 sm:p-12">
+        <div className="w-full max-w-xl space-y-4">
+          {DASHBOARD_NAVIGATION_SECTIONS.map((section) => (
             <button
+              key={section.id}
               type="button"
-              onClick={handleOpenStartNewSemesterModal}
-              className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer whitespace-nowrap"
+              onClick={() => {
+                onSetEditingProfile(false);
+                onSelectSection(section.id);
+              }}
+              className="w-full flex items-center justify-between p-5 sm:p-6 rounded-2xl bg-white border border-slate-200 hover:border-blue-600 hover:bg-blue-50/40 hover:shadow-md transition-all duration-200 text-left cursor-pointer group"
             >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span>Start a New Semester</span>
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-700 group-hover:bg-blue-700 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                  {getSectionIcon(section.id, 'w-6 h-6')}
+                </div>
+                <div>
+                  <span className="text-base sm:text-lg font-bold text-slate-800 group-hover:text-blue-900 transition-colors block">
+                    {section.title}
+                  </span>
+                  <span className="text-xs text-slate-500 group-hover:text-slate-600 transition-colors hidden sm:block">
+                    {section.description}
+                  </span>
+                </div>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-slate-50 group-hover:bg-blue-100 text-slate-400 group-hover:text-blue-700 flex items-center justify-center transition-colors shrink-0 ml-3">
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </div>
             </button>
-          </div>
-
-          {/* 6 Separated Dashboard Sections */}
-          <nav aria-label="Dashboard Sections" className="space-y-1">
-            <div className="pb-1 px-2">
-              <p className="text-[11px] font-semibold text-slate-400">
-                Workspace Sections
-              </p>
-            </div>
-            {DASHBOARD_NAVIGATION_SECTIONS.map((section) => {
-              const isSelected = activeSection === section.id;
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => {
-                    onSetEditingProfile(false);
-                    onSelectSection(section.id);
-                  }}
-                  className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-xs font-medium rounded-xl transition-colors cursor-pointer text-left ${
-                    isSelected
-                      ? 'bg-blue-700 text-white font-semibold'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5 min-w-0">
-                    {getSectionIcon(section.id)}
-                    <span className="truncate">{section.title}</span>
-                  </span>
-                  <span
-                    className={`text-[11px] font-mono tabular-nums shrink-0 ${
-                      isSelected ? 'text-blue-200' : 'text-slate-400'
-                    }`}
-                  >
-                    {section.number}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
+          ))}
         </div>
+      </div>
+    );
+  }
 
-        {/* Storage Status & Quick Profile Edit Button */}
-        <div className="p-4 sm:p-6 border-t border-slate-200 space-y-2.5 bg-slate-50/50">
-          <div className="text-xs text-slate-600 flex items-center gap-2">
-            {isCloudAuthenticated ? (
-              <>
-                <Cloud className="w-4 h-4 text-blue-700 shrink-0" />
-                <span className="truncate" title={cloudUserEmail || 'Cloud Firestore'}>
-                  Cloud Synced ({cloudUserEmail || 'Google Auth'})
-                </span>
-              </>
-            ) : (
-              <>
-                <HardDrive className="w-4 h-4 text-amber-700 shrink-0" />
-                <span className="truncate">Local Browser Mode (This Device)</span>
-              </>
-            )}
-          </div>
-
+  return (
+    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* Navigation Bar for Section: Back to Dashboard button + Section Switcher Tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-2xs">
           <button
             type="button"
             onClick={() => {
-              onSelectSection('my-profile');
-              onSetEditingProfile(true);
+              onSetEditingProfile(false);
+              onSelectSection(null);
             }}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer whitespace-nowrap"
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 hover:text-blue-700 border border-slate-200 rounded-xl transition-colors cursor-pointer w-fit"
           >
-            <Edit3 className="w-3.5 h-3.5" />
-            <span>Edit Profile</span>
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Dashboard</span>
           </button>
-        </div>
-      </aside>
 
-      {/* =====================================================================
-          MAIN CONTENT VIEWPORT
-          ===================================================================== */}
-      <main className="flex-1 min-w-0 p-6 sm:p-10 max-w-6xl space-y-6">
+          {/* Quick switcher between the 5 dashboard sections */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {DASHBOARD_NAVIGATION_SECTIONS.map((sec) => {
+              const isCurrent = activeSection === sec.id;
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  onClick={() => {
+                    onSetEditingProfile(false);
+                    onSelectSection(sec.id);
+                  }}
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                    isCurrent
+                      ? 'bg-blue-700 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                  }`}
+                >
+                  {getSectionIcon(sec.id, 'w-3.5 h-3.5')}
+                  <span>{sec.title}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Optional semester switcher & actions */}
+          {sortedSemesters.length > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 font-medium">Semester:</span>
+              <select
+                aria-label="Select Viewed Semester"
+                value={currentRecord?.semesterId || ''}
+                onChange={(e) => setViewedSemesterId(e.target.value)}
+                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800"
+              >
+                {sortedSemesters.map((s) => (
+                  <option key={s.semesterId} value={s.semesterId}>
+                    {s.semesterName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
         {/* Status Toast Banner */}
         {statusBanner && (
           <div
@@ -564,105 +551,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </button>
           </div>
         )}
-
-        {/* Top Context Header */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
-                <span>PathPilot Workspace</span>
-                <span aria-hidden="true">/</span>
-                <span className="text-blue-700 font-semibold">
-                  {DASHBOARD_NAVIGATION_SECTIONS.find((s) => s.id === activeSection)?.title}
-                </span>
-                {currentRecord && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className="font-mono">
-                      Viewing {currentRecord.semesterName} ({currentRecord.status.toUpperCase()})
-                    </span>
-                  </>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-                  {profile.fullName}
-                </h1>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectSection('my-profile');
-                    onSetEditingProfile(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Edit Profile</span>
-                </button>
-              </div>
-
-              <p className="text-sm text-slate-600">
-                BTech <strong className="font-semibold text-slate-900">{displayBranch}</strong> ·{' '}
-                <strong className="font-semibold text-slate-900">{profile.currentYear}</strong> (
-                <strong className="font-semibold text-slate-900">{profile.currentSemester}</strong>)
-                · Career Goal:{' '}
-                <strong className="font-semibold text-blue-700">{profile.careerGoal}</strong>
-              </p>
-            </div>
-
-            {/* Semester Actions */}
-            {currentRecord && (
-              <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                {currentRecord.status === 'active' ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowCompleteSemesterModal(true)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-emerald-900 bg-emerald-50 border border-emerald-300 rounded-xl hover:bg-emerald-100 transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Mark {currentRecord.semesterName} Complete</span>
-                  </button>
-                ) : (
-                  <div className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded-xl">
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>{currentRecord.semesterName} Completed & Archived</span>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleOpenStartNewSemesterModal}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-700 rounded-xl hover:bg-blue-800 transition-colors cursor-pointer whitespace-nowrap"
-                >
-                  <PlusCircle className="w-3.5 h-3.5" />
-                  <span>Start New Semester</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Completed Semester Read-Only Notice */}
-          {isViewingCompletedSemester && currentRecord && (
-            <div className="mt-5 p-3.5 rounded-xl bg-slate-100 border border-slate-200 text-xs text-slate-700 flex flex-wrap items-center justify-between gap-2">
-              <span>
-                You are revisiting a completed historical semester (<strong>{currentRecord.semesterName}</strong>). Its tasks and progress are preserved in read-only mode.
-              </span>
-              {semesterRecords[semesterNameToId(profile.currentSemester)] &&
-                currentRecord.semesterName !== profile.currentSemester && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setViewedSemesterId(semesterNameToId(profile.currentSemester))
-                    }
-                    className="font-semibold text-blue-700 hover:underline cursor-pointer"
-                  >
-                    Switch to Current Semester ({profile.currentSemester}) →
-                  </button>
-                )}
-            </div>
-          )}
-        </div>
 
         {/* ===================================================================
             SECTION 1: MY PROFILE (`my-profile`)
@@ -2140,7 +2028,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
         ))}
-      </main>
+
+        {/* Bottom Back to Dashboard Action */}
+        <div className="pt-4 pb-8 flex items-center justify-between border-t border-slate-200">
+          <button
+            type="button"
+            onClick={() => {
+              onSetEditingProfile(false);
+              onSelectSection(null);
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 hover:text-blue-700 border border-slate-200 rounded-xl transition-colors shadow-2xs cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Back to Dashboard</span>
+          </button>
+        </div>
+      </div>
 
       {/* =====================================================================
           MODAL 1: CONFIRM MARKING SEMESTER COMPLETE

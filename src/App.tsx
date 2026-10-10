@@ -84,7 +84,7 @@ export default function App() {
   // 3. Navigation & Form Reset State
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [activeDashboardSection, setActiveDashboardSection] =
-    useState<DashboardSectionId>('my-profile');
+    useState<DashboardSectionId | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
 
   /**
@@ -232,7 +232,7 @@ export default function App() {
       setStudentProfile(savedProfile);
       setSemesterRecords(nextRecords);
       setLocalAccounts(listLocalAccounts());
-      setActiveDashboardSection('my-roadmap');
+      setActiveDashboardSection(null);
       setIsEditingProfile(false);
       setCurrentView('dashboard');
     } catch (err) {
@@ -434,8 +434,8 @@ export default function App() {
         onStartOnboarding={handleStartFreshOnboarding}
         onOpenDashboard={() => {
           if (studentProfile) {
-            setActiveDashboardSection('my-profile');
-            setIsEditingProfile(true);
+            setActiveDashboardSection(null);
+            setIsEditingProfile(false);
             setCurrentView('dashboard');
           } else {
             handleStartFreshOnboarding();
@@ -477,6 +477,7 @@ export default function App() {
                 onBuildRoadmap={handleStartFreshOnboarding}
                 hasSavedProfile={Boolean(studentProfile)}
                 onResumeDashboard={() => {
+                  setActiveDashboardSection(null);
                   setIsEditingProfile(false);
                   setCurrentView('dashboard');
                 }}
@@ -496,6 +497,7 @@ export default function App() {
                 onCancel={() => {
                   // Leaving or cancelling onboarding NEVER overwrites existing saved data!
                   if (studentProfile) {
+                    setActiveDashboardSection(null);
                     setCurrentView('dashboard');
                   } else {
                     setCurrentView('landing');
